@@ -31,59 +31,65 @@ import (
 	"github.com/pkg/errors"
 	migrate "github.com/rubenv/sql-migrate"
 	"github.com/sirupsen/logrus"
-	jose "gopkg.in/square/go-jose.v2"
+	"gopkg.in/square/go-jose.v2"
 
 	"github.com/ory/fosite"
-	"github.com/ory/go-convenience/stringsx"
 	"github.com/ory/x/dbal"
 	"github.com/ory/x/sqlcon"
+	"github.com/ory/x/stringsx"
 )
 
 var Migrations = map[string]*dbal.PackrMigrationSource{
-	dbal.DriverMySQL:      dbal.NewMustPackerMigrationSource(logrus.New(), AssetNames(), Asset, []string{"migrations/sql/shared", "migrations/sql/mysql"}, true),
-	dbal.DriverPostgreSQL: dbal.NewMustPackerMigrationSource(logrus.New(), AssetNames(), Asset, []string{"migrations/sql/shared", "migrations/sql/postgres"}, true),
+	dbal.DriverMySQL:       dbal.NewMustPackerMigrationSource(logrus.New(), AssetNames(), Asset, []string{"migrations/sql/shared", "migrations/sql/mysql"}, true),
+	dbal.DriverPostgreSQL:  dbal.NewMustPackerMigrationSource(logrus.New(), AssetNames(), Asset, []string{"migrations/sql/shared", "migrations/sql/postgres"}, true),
+	dbal.DriverCockroachDB: dbal.NewMustPackerMigrationSource(logrus.New(), AssetNames(), Asset, []string{"migrations/sql/cockroach"}, true),
 }
 
-func NewSQLManager(db *sqlx.DB, h fosite.Hasher) *SQLManager {
+func NewSQLManager(db *sqlx.DB, r InternalRegistry) *SQLManager {
 	return &SQLManager{
-		Hasher: h,
-		DB:     db,
+		r:  r,
+		DB: db,
 	}
 }
 
 type SQLManager struct {
-	Hasher fosite.Hasher
-	DB     *sqlx.DB
+	r  InternalRegistry
+	DB *sqlx.DB
 }
 
 type sqlData struct {
-	PK                            int       `db:"pk"`
-	ID                            string    `db:"id"`
-	Name                          string    `db:"client_name"`
-	Secret                        string    `db:"client_secret"`
-	RedirectURIs                  string    `db:"redirect_uris"`
-	GrantTypes                    string    `db:"grant_types"`
-	ResponseTypes                 string    `db:"response_types"`
-	Scope                         string    `db:"scope"`
-	Owner                         string    `db:"owner"`
-	PolicyURI                     string    `db:"policy_uri"`
-	TermsOfServiceURI             string    `db:"tos_uri"`
-	ClientURI                     string    `db:"client_uri"`
-	LogoURI                       string    `db:"logo_uri"`
-	Contacts                      string    `db:"contacts"`
-	SecretExpiresAt               int       `db:"client_secret_expires_at"`
-	SectorIdentifierURI           string    `db:"sector_identifier_uri"`
-	JSONWebKeysURI                string    `db:"jwks_uri"`
-	JSONWebKeys                   string    `db:"jwks"`
-	TokenEndpointAuthMethod       string    `db:"token_endpoint_auth_method"`
-	RequestURIs                   string    `db:"request_uris"`
-	SubjectType                   string    `db:"subject_type"`
-	RequestObjectSigningAlgorithm string    `db:"request_object_signing_alg"`
-	UserinfoSignedResponseAlg     string    `db:"userinfo_signed_response_alg"`
-	AllowedCORSOrigins            string    `db:"allowed_cors_origins"`
-	Audience                      string    `db:"audience"`
-	UpdatedAt                     time.Time `db:"updated_at"`
-	CreatedAt                     time.Time `db:"created_at"`
+	PK                                int       `db:"pk"`
+	ID                                string    `db:"id"`
+	Name                              string    `db:"client_name"`
+	Secret                            string    `db:"client_secret"`
+	RedirectURIs                      string    `db:"redirect_uris"`
+	GrantTypes                        string    `db:"grant_types"`
+	ResponseTypes                     string    `db:"response_types"`
+	Scope                             string    `db:"scope"`
+	Owner                             string    `db:"owner"`
+	PolicyURI                         string    `db:"policy_uri"`
+	TermsOfServiceURI                 string    `db:"tos_uri"`
+	ClientURI                         string    `db:"client_uri"`
+	LogoURI                           string    `db:"logo_uri"`
+	Contacts                          string    `db:"contacts"`
+	SecretExpiresAt                   int       `db:"client_secret_expires_at"`
+	SectorIdentifierURI               string    `db:"sector_identifier_uri"`
+	JSONWebKeysURI                    string    `db:"jwks_uri"`
+	JSONWebKeys                       string    `db:"jwks"`
+	TokenEndpointAuthMethod           string    `db:"token_endpoint_auth_method"`
+	RequestURIs                       string    `db:"request_uris"`
+	SubjectType                       string    `db:"subject_type"`
+	RequestObjectSigningAlgorithm     string    `db:"request_object_signing_alg"`
+	UserinfoSignedResponseAlg         string    `db:"userinfo_signed_response_alg"`
+	AllowedCORSOrigins                string    `db:"allowed_cors_origins"`
+	Audience                          string    `db:"audience"`
+	UpdatedAt                         time.Time `db:"updated_at"`
+	CreatedAt                         time.Time `db:"created_at"`
+	FrontChannelLogoutURI             string    `db:"frontchannel_logout_uri"`
+	FrontChannelLogoutSessionRequired bool      `db:"frontchannel_logout_session_required"`
+	PostLogoutRedirectURIs            string    `db:"post_logout_redirect_uris"`
+	BackChannelLogoutURI              string    `db:"backchannel_logout_uri"`
+	BackChannelLogoutSessionRequired  bool      `db:"backchannel_logout_session_required"`
 }
 
 var sqlParams = []string{
@@ -113,6 +119,11 @@ var sqlParams = []string{
 	"audience",
 	"updated_at",
 	"created_at",
+	"frontchannel_logout_uri",
+	"frontchannel_logout_session_required",
+	"post_logout_redirect_uris",
+	"backchannel_logout_uri",
+	"backchannel_logout_session_required",
 }
 
 func sqlDataFromClient(d *Client) (*sqlData, error) {
@@ -137,62 +148,72 @@ func sqlDataFromClient(d *Client) (*sqlData, error) {
 	}
 
 	return &sqlData{
-		ID:                            d.GetID(),
-		Name:                          d.Name,
-		Secret:                        d.Secret,
-		RedirectURIs:                  strings.Join(d.RedirectURIs, "|"),
-		Audience:                      strings.Join(d.Audience, "|"),
-		GrantTypes:                    strings.Join(d.GrantTypes, "|"),
-		ResponseTypes:                 strings.Join(d.ResponseTypes, "|"),
-		Scope:                         d.Scope,
-		Owner:                         d.Owner,
-		PolicyURI:                     d.PolicyURI,
-		TermsOfServiceURI:             d.TermsOfServiceURI,
-		ClientURI:                     d.ClientURI,
-		LogoURI:                       d.LogoURI,
-		Contacts:                      strings.Join(d.Contacts, "|"),
-		SecretExpiresAt:               d.SecretExpiresAt,
-		SectorIdentifierURI:           d.SectorIdentifierURI,
-		JSONWebKeysURI:                d.JSONWebKeysURI,
-		JSONWebKeys:                   jwks,
-		TokenEndpointAuthMethod:       d.TokenEndpointAuthMethod,
-		RequestObjectSigningAlgorithm: d.RequestObjectSigningAlgorithm,
-		RequestURIs:                   strings.Join(d.RequestURIs, "|"),
-		UserinfoSignedResponseAlg:     d.UserinfoSignedResponseAlg,
-		SubjectType:                   d.SubjectType,
-		AllowedCORSOrigins:            strings.Join(d.AllowedCORSOrigins, "|"),
-		CreatedAt:                     createdAt.Round(time.Second),
-		UpdatedAt:                     updatedAt.Round(time.Second),
+		ID:                                d.GetID(),
+		Name:                              d.Name,
+		Secret:                            d.Secret,
+		RedirectURIs:                      strings.Join(d.RedirectURIs, "|"),
+		Audience:                          strings.Join(d.Audience, "|"),
+		GrantTypes:                        strings.Join(d.GrantTypes, "|"),
+		ResponseTypes:                     strings.Join(d.ResponseTypes, "|"),
+		Scope:                             d.Scope,
+		Owner:                             d.Owner,
+		PolicyURI:                         d.PolicyURI,
+		TermsOfServiceURI:                 d.TermsOfServiceURI,
+		ClientURI:                         d.ClientURI,
+		LogoURI:                           d.LogoURI,
+		Contacts:                          strings.Join(d.Contacts, "|"),
+		SecretExpiresAt:                   d.SecretExpiresAt,
+		SectorIdentifierURI:               d.SectorIdentifierURI,
+		JSONWebKeysURI:                    d.JSONWebKeysURI,
+		JSONWebKeys:                       jwks,
+		TokenEndpointAuthMethod:           d.TokenEndpointAuthMethod,
+		RequestObjectSigningAlgorithm:     d.RequestObjectSigningAlgorithm,
+		RequestURIs:                       strings.Join(d.RequestURIs, "|"),
+		UserinfoSignedResponseAlg:         d.UserinfoSignedResponseAlg,
+		SubjectType:                       d.SubjectType,
+		AllowedCORSOrigins:                strings.Join(d.AllowedCORSOrigins, "|"),
+		CreatedAt:                         createdAt.Round(time.Second),
+		UpdatedAt:                         updatedAt.Round(time.Second),
+		FrontChannelLogoutURI:             d.FrontChannelLogoutURI,
+		FrontChannelLogoutSessionRequired: d.FrontChannelLogoutSessionRequired,
+		PostLogoutRedirectURIs:            strings.Join(d.PostLogoutRedirectURIs, "|"),
+		BackChannelLogoutURI:              d.BackChannelLogoutURI,
+		BackChannelLogoutSessionRequired:  d.BackChannelLogoutSessionRequired,
 	}, nil
 }
 
 func (d *sqlData) ToClient() (*Client, error) {
 	c := &Client{
-		ClientID:                      d.ID,
-		Name:                          d.Name,
-		Secret:                        d.Secret,
-		Audience:                      stringsx.Splitx(d.Audience, "|"),
-		RedirectURIs:                  stringsx.Splitx(d.RedirectURIs, "|"),
-		GrantTypes:                    stringsx.Splitx(d.GrantTypes, "|"),
-		ResponseTypes:                 stringsx.Splitx(d.ResponseTypes, "|"),
-		Scope:                         d.Scope,
-		Owner:                         d.Owner,
-		PolicyURI:                     d.PolicyURI,
-		TermsOfServiceURI:             d.TermsOfServiceURI,
-		ClientURI:                     d.ClientURI,
-		LogoURI:                       d.LogoURI,
-		Contacts:                      stringsx.Splitx(d.Contacts, "|"),
-		SecretExpiresAt:               d.SecretExpiresAt,
-		SectorIdentifierURI:           d.SectorIdentifierURI,
-		JSONWebKeysURI:                d.JSONWebKeysURI,
-		TokenEndpointAuthMethod:       d.TokenEndpointAuthMethod,
-		RequestObjectSigningAlgorithm: d.RequestObjectSigningAlgorithm,
-		RequestURIs:                   stringsx.Splitx(d.RequestURIs, "|"),
-		UserinfoSignedResponseAlg:     d.UserinfoSignedResponseAlg,
-		SubjectType:                   d.SubjectType,
-		AllowedCORSOrigins:            stringsx.Splitx(d.AllowedCORSOrigins, "|"),
-		CreatedAt:                     d.CreatedAt,
-		UpdatedAt:                     d.UpdatedAt,
+		ClientID:                          d.ID,
+		Name:                              d.Name,
+		Secret:                            d.Secret,
+		Audience:                          stringsx.Splitx(d.Audience, "|"),
+		RedirectURIs:                      stringsx.Splitx(d.RedirectURIs, "|"),
+		GrantTypes:                        stringsx.Splitx(d.GrantTypes, "|"),
+		ResponseTypes:                     stringsx.Splitx(d.ResponseTypes, "|"),
+		Scope:                             d.Scope,
+		Owner:                             d.Owner,
+		PolicyURI:                         d.PolicyURI,
+		TermsOfServiceURI:                 d.TermsOfServiceURI,
+		ClientURI:                         d.ClientURI,
+		LogoURI:                           d.LogoURI,
+		Contacts:                          stringsx.Splitx(d.Contacts, "|"),
+		SecretExpiresAt:                   d.SecretExpiresAt,
+		SectorIdentifierURI:               d.SectorIdentifierURI,
+		JSONWebKeysURI:                    d.JSONWebKeysURI,
+		TokenEndpointAuthMethod:           d.TokenEndpointAuthMethod,
+		RequestObjectSigningAlgorithm:     d.RequestObjectSigningAlgorithm,
+		RequestURIs:                       stringsx.Splitx(d.RequestURIs, "|"),
+		UserinfoSignedResponseAlg:         d.UserinfoSignedResponseAlg,
+		SubjectType:                       d.SubjectType,
+		AllowedCORSOrigins:                stringsx.Splitx(d.AllowedCORSOrigins, "|"),
+		CreatedAt:                         d.CreatedAt,
+		UpdatedAt:                         d.UpdatedAt,
+		FrontChannelLogoutURI:             d.FrontChannelLogoutURI,
+		FrontChannelLogoutSessionRequired: d.FrontChannelLogoutSessionRequired,
+		PostLogoutRedirectURIs:            stringsx.Splitx(d.PostLogoutRedirectURIs, "|"),
+		BackChannelLogoutURI:              d.BackChannelLogoutURI,
+		BackChannelLogoutSessionRequired:  d.BackChannelLogoutSessionRequired,
 	}
 
 	if d.JSONWebKeys != "" {
@@ -205,9 +226,15 @@ func (d *sqlData) ToClient() (*Client, error) {
 	return c, nil
 }
 
-func (m *SQLManager) CreateSchemas() (int, error) {
+func (m *SQLManager) PlanMigration(dbName string) ([]*migrate.PlannedMigration, error) {
 	migrate.SetTable("hydra_client_migration")
-	n, err := migrate.Exec(m.DB.DB, m.DB.DriverName(), Migrations[dbal.Canonicalize(m.DB.DriverName())], migrate.Up)
+	plan, _, err := migrate.PlanMigration(m.DB.DB, dbal.Canonicalize(m.DB.DriverName()), Migrations[dbName], migrate.Up, 0)
+	return plan, errors.WithStack(err)
+}
+
+func (m *SQLManager) CreateSchemas(dbName string) (int, error) {
+	migrate.SetTable("hydra_client_migration")
+	n, err := migrate.Exec(m.DB.DB, dbal.Canonicalize(m.DB.DriverName()), Migrations[dbName], migrate.Up)
 	if err != nil {
 		return 0, errors.Wrapf(err, "Could not migrate sql schema, applied %d Migrations", n)
 	}
@@ -236,7 +263,7 @@ func (m *SQLManager) UpdateClient(ctx context.Context, c *Client) error {
 	if c.Secret == "" {
 		c.Secret = string(o.GetHashedSecret())
 	} else {
-		h, err := m.Hasher.Hash(ctx, []byte(c.Secret))
+		h, err := m.r.ClientHasher().Hash(ctx, []byte(c.Secret))
 		if err != nil {
 			return errors.WithStack(err)
 		}
@@ -265,7 +292,7 @@ func (m *SQLManager) Authenticate(ctx context.Context, id string, secret []byte)
 		return nil, errors.WithStack(err)
 	}
 
-	if err := m.Hasher.Compare(ctx, c.GetHashedSecret(), secret); err != nil {
+	if err := m.r.ClientHasher().Compare(ctx, c.GetHashedSecret(), secret); err != nil {
 		return nil, errors.WithStack(err)
 	}
 
@@ -273,7 +300,7 @@ func (m *SQLManager) Authenticate(ctx context.Context, id string, secret []byte)
 }
 
 func (m *SQLManager) CreateClient(ctx context.Context, c *Client) error {
-	h, err := m.Hasher.Hash(ctx, []byte(c.Secret))
+	h, err := m.r.ClientHasher().Hash(ctx, []byte(c.Secret))
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -318,5 +345,16 @@ func (m *SQLManager) GetClients(ctx context.Context, limit, offset int) (clients
 
 		clients[k.ID] = *c
 	}
+
 	return clients, nil
+}
+
+func (m *SQLManager) CountClients(ctx context.Context) (int, error) {
+	var n int
+	if err := m.DB.QueryRow("SELECT count(*) FROM hydra_client").Scan(&n); err != nil {
+		fmt.Println(err.Error())
+		return 0, sqlcon.HandleError(err)
+	}
+
+	return n, nil
 }

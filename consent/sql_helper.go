@@ -23,15 +23,16 @@ package consent
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"github.com/ory/go-convenience/stringsx"
 	"github.com/ory/hydra/client"
 	"github.com/ory/x/dbal"
+	"github.com/ory/x/stringsx"
 )
 
 var Migrations = map[string]*dbal.PackrMigrationSource{
@@ -42,6 +43,9 @@ var Migrations = map[string]*dbal.PackrMigrationSource{
 	"postgres": dbal.NewMustPackerMigrationSource(logrus.New(), AssetNames(), Asset, []string{
 		"migrations/sql/shared",
 		"migrations/sql/postgres",
+	}, true),
+	"cockroach": dbal.NewMustPackerMigrationSource(logrus.New(), AssetNames(), Asset, []string{
+		"migrations/sql/cockroach",
 	}, true),
 }
 
@@ -55,6 +59,7 @@ var sqlParamsAuthenticationRequestHandled = []string{
 	"authenticated_at",
 	"acr",
 	"was_used",
+	"context",
 	"forced_subject_identifier",
 }
 
@@ -74,7 +79,12 @@ var sqlParamsAuthenticationRequest = []string{
 	"login_session_id",
 }
 
-var sqlParamsConsentRequest = append(sqlParamsAuthenticationRequest, "forced_subject_identifier", "login_challenge", "acr")
+var sqlParamsConsentRequest = append(sqlParamsAuthenticationRequest,
+	"forced_subject_identifier",
+	"login_challenge",
+	"acr",
+	"context",
+)
 
 var sqlParamsConsentRequestHandled = []string{
 	"challenge",
@@ -89,11 +99,85 @@ var sqlParamsConsentRequestHandled = []string{
 	"session_id_token",
 	"was_used",
 }
+var sqlParamsConsentRequestHandledUpdate = func() []string {
+	p := make([]string, len(sqlParamsConsentRequestHandled))
+	for i, v := range sqlParamsConsentRequestHandled {
+		p[i] = fmt.Sprintf("%s=:%s", v, v)
+	}
+	return p
+}()
 
 var sqlParamsAuthSession = []string{
 	"id",
 	"authenticated_at",
 	"subject",
+	"remember",
+}
+
+var sqlParamsLogoutRequest = []string{
+	"challenge",
+	"verifier",
+	"subject",
+	"sid",
+	"request_url",
+	"redir_url",
+	"was_used",
+	"accepted",
+	"rejected",
+	"client_id",
+	"rp_initiated",
+}
+
+type sqlLogoutRequest struct {
+	Challenge             string         `db:"challenge"`
+	Verifier              string         `db:"verifier"`
+	Subject               string         `db:"subject"`
+	SessionID             string         `db:"sid"`
+	RequestURL            string         `db:"request_url"`
+	PostLogoutRedirectURI string         `db:"redir_url"`
+	WasUsed               bool           `db:"was_used"`
+	Accepted              bool           `db:"accepted"`
+	Rejected              bool           `db:"rejected"`
+	Client                sql.NullString `db:"client_id"`
+	RPInitiated           bool           `db:"rp_initiated"`
+}
+
+func newSQLLogoutRequest(c *LogoutRequest) *sqlLogoutRequest {
+	var clientID sql.NullString
+	if c.Client != nil {
+		clientID = sql.NullString{
+			Valid:  true,
+			String: c.Client.ClientID,
+		}
+	}
+
+	return &sqlLogoutRequest{
+		Challenge:             c.Challenge,
+		Verifier:              c.Verifier,
+		Subject:               c.Subject,
+		SessionID:             c.SessionID,
+		RequestURL:            c.RequestURL,
+		PostLogoutRedirectURI: c.PostLogoutRedirectURI,
+		WasUsed:               c.WasUsed,
+		Accepted:              c.Accepted,
+		Client:                clientID,
+		RPInitiated:           c.RPInitiated,
+	}
+}
+
+func (r *sqlLogoutRequest) ToLogoutRequest(c *client.Client) *LogoutRequest {
+	return &LogoutRequest{
+		Challenge:             r.Challenge,
+		Verifier:              r.Verifier,
+		Subject:               r.Subject,
+		SessionID:             r.SessionID,
+		RequestURL:            r.RequestURL,
+		PostLogoutRedirectURI: r.PostLogoutRedirectURI,
+		WasUsed:               r.WasUsed,
+		Accepted:              r.Accepted,
+		Client:                c,
+		RPInitiated:           r.RPInitiated,
+	}
 }
 
 type sqlAuthenticationRequest struct {
@@ -110,6 +194,7 @@ type sqlAuthenticationRequest struct {
 	AuthenticatedAt      *time.Time     `db:"authenticated_at"`
 	RequestedAt          time.Time      `db:"requested_at"`
 	LoginSessionID       sql.NullString `db:"login_session_id"`
+	Context              string         `db:"context"`
 	WasHandled           bool           `db:"was_handled"`
 }
 
@@ -148,6 +233,15 @@ func newSQLConsentRequest(c *ConsentRequest) (*sqlConsentRequest, error) {
 		}
 	}
 
+	if c.Context == nil {
+		c.Context = map[string]interface{}{}
+	}
+
+	context, err := json.Marshal(c.Context)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
 	return &sqlConsentRequest{
 		sqlAuthenticationRequest: sqlAuthenticationRequest{
 			OpenIDConnectContext: string(oidc),
@@ -163,6 +257,7 @@ func newSQLConsentRequest(c *ConsentRequest) (*sqlConsentRequest, error) {
 			AuthenticatedAt:      toMySQLDateHack(c.AuthenticatedAt),
 			RequestedAt:          c.RequestedAt,
 			LoginSessionID:       sessionID,
+			Context:              string(context),
 		},
 		LoginChallenge:          sql.NullString{Valid: true, String: c.LoginChallenge},
 		ForcedSubjectIdentifier: c.ForceSubjectIdentifier,
@@ -170,7 +265,7 @@ func newSQLConsentRequest(c *ConsentRequest) (*sqlConsentRequest, error) {
 	}, nil
 }
 
-func newSQLAuthenticationRequest(c *AuthenticationRequest) (*sqlAuthenticationRequest, error) {
+func newSQLAuthenticationRequest(c *LoginRequest) (*sqlAuthenticationRequest, error) {
 	oidc, err := json.Marshal(c.OpenIDConnectContext)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -201,13 +296,13 @@ func newSQLAuthenticationRequest(c *AuthenticationRequest) (*sqlAuthenticationRe
 	}, nil
 }
 
-func (s *sqlAuthenticationRequest) toAuthenticationRequest(client *client.Client) (*AuthenticationRequest, error) {
+func (s *sqlAuthenticationRequest) toAuthenticationRequest(client *client.Client) (*LoginRequest, error) {
 	var oidc OpenIDConnectContext
 	if err := json.Unmarshal([]byte(s.OpenIDConnectContext), &oidc); err != nil {
 		return nil, errors.WithStack(err)
 	}
 
-	return &AuthenticationRequest{
+	return &LoginRequest{
 		OpenIDConnectContext: &oidc,
 		Client:               client,
 		Subject:              s.Subject,
@@ -227,7 +322,16 @@ func (s *sqlAuthenticationRequest) toAuthenticationRequest(client *client.Client
 
 func (s *sqlConsentRequest) toConsentRequest(client *client.Client) (*ConsentRequest, error) {
 	var oidc OpenIDConnectContext
+	var context map[string]interface{}
 	if err := json.Unmarshal([]byte(s.OpenIDConnectContext), &oidc); err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	if s.Context == "" {
+		s.Context = "{}"
+	}
+
+	if err := json.Unmarshal([]byte(s.Context), &context); err != nil {
 		return nil, errors.WithStack(err)
 	}
 
@@ -248,6 +352,7 @@ func (s *sqlConsentRequest) toConsentRequest(client *client.Client) (*ConsentReq
 		WasHandled:             s.WasHandled,
 		LoginSessionID:         s.LoginSessionID.String,
 		LoginChallenge:         s.LoginChallenge.String,
+		Context:                context,
 		ACR:                    s.ACR,
 	}, nil
 }
@@ -349,7 +454,7 @@ func (s *sqlHandledConsentRequest) toHandledConsentRequest(r *ConsentRequest) (*
 	}, nil
 }
 
-type sqlHandledAuthenticationRequest struct {
+type sqlHandledLoginRequest struct {
 	Remember               bool       `db:"remember"`
 	RememberFor            int        `db:"remember_for"`
 	ACR                    string     `db:"acr"`
@@ -359,10 +464,11 @@ type sqlHandledAuthenticationRequest struct {
 	RequestedAt            time.Time  `db:"requested_at"`
 	WasUsed                bool       `db:"was_used"`
 	AuthenticatedAt        *time.Time `db:"authenticated_at"`
+	Context                string     `db:"context"`
 	ForceSubjectIdentifier string     `db:"forced_subject_identifier"`
 }
 
-func newSQLHandledAuthenticationRequest(c *HandledAuthenticationRequest) (*sqlHandledAuthenticationRequest, error) {
+func newSQLHandledLoginRequest(c *HandledLoginRequest) (*sqlHandledLoginRequest, error) {
 	e := "{}"
 
 	if c.Error != nil {
@@ -373,13 +479,23 @@ func newSQLHandledAuthenticationRequest(c *HandledAuthenticationRequest) (*sqlHa
 		}
 	}
 
-	return &sqlHandledAuthenticationRequest{
+	ctx := "{}"
+	if c.Context != nil {
+		if out, err := json.Marshal(c.Context); err != nil {
+			return nil, errors.WithStack(err)
+		} else {
+			ctx = string(out)
+		}
+	}
+
+	return &sqlHandledLoginRequest{
 		ACR:                    c.ACR,
 		Subject:                c.Subject,
 		Remember:               c.Remember,
 		RememberFor:            c.RememberFor,
 		Error:                  e,
 		Challenge:              c.Challenge,
+		Context:                ctx,
 		RequestedAt:            c.RequestedAt,
 		WasUsed:                c.WasUsed,
 		AuthenticatedAt:        toMySQLDateHack(c.AuthenticatedAt),
@@ -387,7 +503,7 @@ func newSQLHandledAuthenticationRequest(c *HandledAuthenticationRequest) (*sqlHa
 	}, nil
 }
 
-func (s *sqlHandledAuthenticationRequest) toHandledAuthenticationRequest(a *AuthenticationRequest) (*HandledAuthenticationRequest, error) {
+func (s *sqlHandledLoginRequest) toHandledLoginRequest(a *LoginRequest) (*HandledLoginRequest, error) {
 	var e *RequestDeniedError
 
 	if len(s.Error) > 0 && s.Error != "{}" {
@@ -397,7 +513,12 @@ func (s *sqlHandledAuthenticationRequest) toHandledAuthenticationRequest(a *Auth
 		}
 	}
 
-	return &HandledAuthenticationRequest{
+	var context map[string]interface{}
+	if err := json.Unmarshal([]byte(s.Context), &context); err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	return &HandledLoginRequest{
 		ForceSubjectIdentifier: s.ForceSubjectIdentifier,
 		RememberFor:            s.RememberFor,
 		Remember:               s.Remember,
@@ -406,7 +527,8 @@ func (s *sqlHandledAuthenticationRequest) toHandledAuthenticationRequest(a *Auth
 		WasUsed:                s.WasUsed,
 		ACR:                    s.ACR,
 		Error:                  e,
-		AuthenticationRequest:  a,
+		LoginRequest:           a,
+		Context:                context,
 		Subject:                s.Subject,
 		AuthenticatedAt:        fromMySQLDateHack(s.AuthenticatedAt),
 	}, nil

@@ -21,121 +21,92 @@
 package oauth2_test
 
 import (
+	"context"
 	"flag"
-	"sync"
 	"testing"
-	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ory/fosite"
 	"github.com/ory/hydra/client"
-	"github.com/ory/hydra/consent"
+	"github.com/ory/hydra/driver"
+	"github.com/ory/hydra/driver/configuration"
+	"github.com/ory/hydra/internal"
 	. "github.com/ory/hydra/oauth2"
+	"github.com/ory/hydra/x"
 	"github.com/ory/x/sqlcon/dockertest"
 )
 
-var fositeStores = map[string]ManagerTestSetup{}
-var clientManager = &client.MemoryManager{
-	Clients: []client.Client{{ClientID: "foobar"}},
-	Hasher:  &fosite.BCrypt{},
-}
-var fm = NewFositeMemoryStore(clientManager, time.Hour)
-var databases = make(map[string]*sqlx.DB)
-var m sync.Mutex
+var registries = make(map[string]driver.Registry)
 
-func init() {
-	fositeStores["memory"] = ManagerTestSetup{
-		F:  fm,
-		Cl: clientManager,
-		Co: consent.NewMemoryManager(fm),
-	}
-}
 func TestMain(m *testing.M) {
 	flag.Parse()
 	runner := dockertest.Register()
 	runner.Exit(m.Run())
 }
 
-func connectToPG(t *testing.T) {
+func connectToPG(t *testing.T) *sqlx.DB {
 	db, err := dockertest.ConnectToTestPostgreSQL()
 	require.NoError(t, err)
-	t.Logf("Cleaning postgres db...")
-	cleanDB(t, db)
-	t.Logf("Cleaned postgres db")
-
-	c := client.NewSQLManager(db, &fosite.BCrypt{WorkFactor: 8})
-	_, err = c.CreateSchemas()
-	require.NoError(t, err)
-
-	cm := consent.NewSQLManager(db, c, nil)
-	_, err = cm.CreateSchemas()
-	require.NoError(t, err)
-
-	s := NewFositeSQLStore(c, db, logrus.New(), time.Hour, false)
-	_, err = s.CreateSchemas()
-	require.NoError(t, err)
-
-	m.Lock()
-	databases["postgres"] = db
-	fositeStores["postgres"] = ManagerTestSetup{
-		F:  s,
-		Co: cm,
-		Cl: c,
-	}
-	m.Unlock()
+	x.CleanSQL(t, db)
+	return db
 }
 
-func connectToMySQL(t *testing.T) {
+func connectToMySQL(t *testing.T) *sqlx.DB {
 	db, err := dockertest.ConnectToTestMySQL()
 	require.NoError(t, err)
-	t.Logf("Cleaning mysql db...")
-	cleanDB(t, db)
-	t.Logf("Cleaned mysql db")
+	x.CleanSQL(t, db)
+	return db
+}
 
-	c := client.NewSQLManager(db, &fosite.BCrypt{WorkFactor: 8})
-	_, err = c.CreateSchemas()
+func connectToCRDB(t *testing.T) *sqlx.DB {
+	db, err := dockertest.ConnectToTestCockroachDB()
 	require.NoError(t, err)
+	x.CleanSQL(t, db)
+	return db
+}
 
-	cm := consent.NewSQLManager(db, c, nil)
-	_, err = cm.CreateSchemas()
+func connectSQL(t *testing.T, conf *configuration.ViperProvider, dbName string, db *sqlx.DB) driver.Registry {
+	reg := internal.NewRegistrySQL(conf, db)
+	_, err := reg.CreateSchemas(dbName)
 	require.NoError(t, err)
-
-	s := NewFositeSQLStore(c, db, logrus.New(), time.Hour, false)
-	_, err = s.CreateSchemas()
-	require.NoError(t, err)
-
-	m.Lock()
-	databases["mysql"] = db
-	fositeStores["mysql"] = ManagerTestSetup{
-		F:  s,
-		Co: cm,
-		Cl: c,
-	}
-	m.Unlock()
+	return reg
 }
 
 func TestManagers(t *testing.T) {
+	conf := internal.NewConfigurationWithDefaults()
+	reg := internal.NewRegistry(conf)
+
+	require.NoError(t, reg.ClientManager().CreateClient(context.Background(), &client.Client{ClientID: "foobar"})) // this is a workaround because the client is not being created for memory store by test helpers.
+	registries["memory"] = reg
+
 	if !testing.Short() {
+		var p, m, c *sqlx.DB
 		dockertest.Parallel([]func(){
 			func() {
-				connectToPG(t)
+				p = connectToPG(t)
 			},
 			func() {
-				connectToMySQL(t)
+				m = connectToMySQL(t)
+			},
+			func() {
+				c = connectToCRDB(t)
 			},
 		})
+		registries["postgres"] = connectSQL(t, conf, "postgres", p)
+		registries["mysql"] = connectSQL(t, conf, "mysql", m)
+		registries["cockroach"] = connectSQL(t, conf, "cockroach", c)
 	}
 
-	for k, store := range fositeStores {
+	for k, store := range registries {
 		TestHelperRunner(t, store, k)
 	}
 
-	for _, m := range databases {
-		cleanDB(t, m)
+	for _, m := range registries {
+		if mm, ok := m.(*driver.RegistrySQL); ok {
+			x.CleanSQL(t, mm.DB())
+		}
 	}
 }

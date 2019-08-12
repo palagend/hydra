@@ -26,6 +26,8 @@ import (
 	"github.com/ory/fosite"
 )
 
+var _, _ Manager = new(SQLManager), new(MemoryManager)
+
 type Manager interface {
 	Storage
 
@@ -42,6 +44,8 @@ type Storage interface {
 	DeleteClient(ctx context.Context, id string) error
 
 	GetClients(ctx context.Context, limit, offset int) (map[string]Client, error)
+
+	CountClients(ctx context.Context) (int, error)
 
 	GetConcreteClient(ctx context.Context, id string) (*Client, error)
 }

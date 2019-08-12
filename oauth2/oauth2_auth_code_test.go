@@ -36,28 +36,28 @@ import (
 	"time"
 
 	djwt "github.com/dgrijalva/jwt-go"
-	"github.com/gorilla/sessions"
+	"github.com/jmoiron/sqlx"
 	"github.com/julienschmidt/httprouter"
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
-	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/ory/fosite"
-	"github.com/ory/fosite/compose"
-	foauth2 "github.com/ory/fosite/handler/oauth2"
-	"github.com/ory/fosite/handler/openid"
 	"github.com/ory/fosite/token/jwt"
-	"github.com/ory/herodot"
-	"github.com/ory/hydra/client"
 	hc "github.com/ory/hydra/client"
-	"github.com/ory/hydra/consent"
-	"github.com/ory/hydra/jwk"
-	. "github.com/ory/hydra/oauth2"
-	"github.com/ory/hydra/pkg"
-	"github.com/ory/hydra/sdk/go/hydra/swagger"
+	"github.com/ory/hydra/driver"
+	"github.com/ory/hydra/driver/configuration"
+	"github.com/ory/hydra/internal"
+	hydra "github.com/ory/hydra/sdk/go/hydra/client"
+	"github.com/ory/hydra/sdk/go/hydra/client/admin"
+	"github.com/ory/hydra/sdk/go/hydra/models"
+	"github.com/ory/hydra/x"
+	"github.com/ory/x/pointerx"
+	"github.com/ory/x/sqlcon/dockertest"
+	"github.com/ory/x/urlx"
 )
 
 func newCookieJar() http.CookieJar {
@@ -86,6 +86,56 @@ type clientCreator interface {
 	CreateClient(cxt context.Context, client *hc.Client) error
 }
 
+func acceptLogin(apiClient *hydra.OryHydra, subject string, expectSkip bool, expectSubject string) func(t *testing.T) func(w http.ResponseWriter, r *http.Request) {
+	return func(t *testing.T) func(w http.ResponseWriter, r *http.Request) {
+		return func(w http.ResponseWriter, r *http.Request) {
+			rrr, err := apiClient.Admin.GetLoginRequest(admin.NewGetLoginRequestParams().WithLoginChallenge(r.URL.Query().Get("login_challenge")))
+			require.NoError(t, err)
+
+			rr := rrr.Payload
+			assert.Equal(t, expectSkip, rr.Skip)
+			assert.EqualValues(t, expectSubject, rr.Subject)
+
+			vr, err := apiClient.Admin.AcceptLoginRequest(admin.NewAcceptLoginRequestParams().
+				WithLoginChallenge(r.URL.Query().Get("login_challenge")).
+				WithBody(&models.HandledLoginRequest{Subject: pointerx.String(subject)}))
+			require.NoError(t, err)
+
+			v := vr.Payload
+			require.NotEmpty(t, v.RedirectTo)
+			http.Redirect(w, r, v.RedirectTo, http.StatusFound)
+		}
+	}
+}
+
+func acceptConsent(apiClient *hydra.OryHydra, scope []string, expectSkip bool, expectSubject string) func(t *testing.T) func(w http.ResponseWriter, r *http.Request) {
+	return func(t *testing.T) func(w http.ResponseWriter, r *http.Request) {
+		return func(w http.ResponseWriter, r *http.Request) {
+			rrr, err := apiClient.Admin.GetConsentRequest(admin.NewGetConsentRequestParams().WithConsentChallenge(r.URL.Query().Get("consent_challenge")))
+			require.NoError(t, err)
+
+			rr := rrr.Payload
+			assert.Equal(t, expectSkip, rr.Skip)
+			assert.EqualValues(t, expectSubject, rr.Subject)
+
+			vr, err := apiClient.Admin.AcceptConsentRequest(admin.NewAcceptConsentRequestParams().
+				WithConsentChallenge(r.URL.Query().Get("consent_challenge")).
+				WithBody(&models.HandledConsentRequest{
+					GrantedScope: scope,
+					Session: &models.ConsentRequestSessionData{
+						AccessToken: map[string]interface{}{"foo": "bar"},
+						IDToken:     map[string]interface{}{"bar": "baz"},
+					},
+				}))
+			require.NoError(t, err)
+			v := vr.Payload
+
+			require.NotEmpty(t, v.RedirectTo)
+			http.Redirect(w, r, v.RedirectTo, http.StatusFound)
+		}
+	}
+}
+
 // TestAuthCodeWithDefaultStrategy runs proper integration tests against in-memory and database connectors, specifically
 // we test:
 //
@@ -98,119 +148,92 @@ type clientCreator interface {
 // - [x] If `id_token_hint` is handled properly
 //   - [x] What happens if `id_token_hint` does not match the value from the handled authentication request ("accept login")
 func TestAuthCodeWithDefaultStrategy(t *testing.T) {
-	for km, fs := range fositeStores {
+	conf := internal.NewConfigurationWithDefaults()
+	regs := map[string]driver.Registry{
+		"memory": internal.NewRegistry(conf),
+	}
+
+	if !testing.Short() {
+		var p, m, c *sqlx.DB
+		dockertest.Parallel([]func(){
+			func() {
+				p = connectToPG(t)
+			},
+			func() {
+				m = connectToMySQL(t)
+			},
+			func() {
+				c = connectToCRDB(t)
+			},
+		})
+		pr := internal.NewRegistrySQL(conf, p)
+		_, err := pr.CreateSchemas("postgres")
+		require.NoError(t, err)
+		regs["postgres"] = pr
+
+		mr := internal.NewRegistrySQL(conf, m)
+		_, err = mr.CreateSchemas("mysql")
+		require.NoError(t, err)
+		regs["mysql"] = mr
+
+		cr := internal.NewRegistrySQL(conf, c)
+		_, err = cr.CreateSchemas("cockroach")
+		require.NoError(t, err)
+		regs["cockroach"] = cr
+	}
+
+	for km, reg := range regs {
 		t.Run("manager="+km, func(t *testing.T) {
-			var cm consent.Manager
-			switch km {
-			case "memory":
-				cm = consent.NewMemoryManager(fs.F)
-				fs.F.(*FositeMemoryStore).Manager = hc.NewMemoryManager(hasher)
-			case "mysql":
-				fallthrough
-			case "postgres":
-				db := databases[km]
-				cleanDB(t, db)
-
-				_, err := fs.Cl.(*client.SQLManager).CreateSchemas()
-				require.NoError(t, err)
-
-				scm := consent.NewSQLManager(databases[km], fs.Cl, fs.F)
-				_, err = scm.CreateSchemas()
-				require.NoError(t, err)
-
-				_, err = (fs.F.(*FositeSQLStore)).CreateSchemas()
-				require.NoError(t, err)
-
-				cm = scm
-			}
-
-			for _, strat := range []struct {
-				d string
-				s foauth2.CoreStrategy
-			}{
-				{
-					d: "opaque",
-					s: oauth2OpqaueStrategy,
-				},
-				{
-					d: "jwt",
-					s: oauth2JWTStrategy,
-				},
-			} {
+			for _, strat := range []struct{ d string }{{d: "opaque"}, {d: "jwt"}} {
 				t.Run("strategy="+strat.d, func(t *testing.T) {
+					conf := internal.NewConfigurationWithDefaults()
+					viper.Set(configuration.ViperKeyAccessTokenStrategy, strat.d)
+					viper.Set(configuration.ViperKeyScopeStrategy, "exact")
+					viper.Set(configuration.ViperKeySubjectIdentifierAlgorithmSalt, "76d5d2bf-747f-4592-9fbd-d2b895a54b3a")
+					viper.Set(configuration.ViperKeyAccessTokenLifespan, time.Second+time.Millisecond*500)
+					viper.Set(configuration.ViperKeyRefreshTokenLifespan, time.Second+time.Millisecond*800)
+					// SendDebugMessagesToClients: true,
+					internal.MustEnsureRegistryKeys(reg, x.OpenIDConnectKeyName)
+
+					reg.WithConfig(conf)
+
 					var m sync.Mutex
 					l := logrus.New()
 					l.Level = logrus.DebugLevel
 					var lph, cph func(w http.ResponseWriter, r *http.Request)
 					lp := mockProvider(&lph)
+					defer lp.Close()
 					cp := mockProvider(&cph)
-					jwts := &jwt.RS256JWTStrategy{
-						PrivateKey: pkg.MustINSECURELOWENTROPYRSAKEYFORTEST(),
-					}
-					hasher := &fosite.BCrypt{
-						WorkFactor: 4,
-					}
+					defer lp.Close()
 
-					fooUserIDToken, _, err := jwts.Generate(context.TODO(), jwt.IDTokenClaims{
+					fooUserIDToken, _, err := reg.OpenIDJWTStrategy().Generate(context.TODO(), jwt.IDTokenClaims{
 						Subject:   "foouser",
 						ExpiresAt: time.Now().Add(time.Hour),
 						IssuedAt:  time.Now(),
 					}.ToMapClaims(), jwt.NewHeaders())
 					require.NoError(t, err)
 
-					// we create a new fositeStore here because the old one
-					router := httprouter.New()
-					ts := httptest.NewServer(router)
-					cookieStore := sessions.NewCookieStore([]byte("foo-secret"))
-
-					consentStrategy := consent.NewStrategy(
-						lp.URL, cp.URL, ts.URL, "/oauth2/auth", cm,
-						cookieStore,
-						fosite.ExactScopeStrategy, false, time.Hour, jwts,
-						openid.NewOpenIDConnectRequestValidator(nil, jwts),
-						map[string]consent.SubjectIdentifierAlgorithm{
-							"pairwise": consent.NewSubjectIdentifierAlgorithmPairwise([]byte("76d5d2bf-747f-4592-9fbd-d2b895a54b3a")),
-							"public":   consent.NewSubjectIdentifierAlgorithmPublic(),
-						},
-					)
-
-					jm := &jwk.MemoryManager{Keys: map[string]*jose.JSONWebKeySet{}}
-					keys, err := (&jwk.RS256Generator{}).Generate("", "sig")
-					require.NoError(t, err)
-					require.NoError(t, jm.AddKeySet(context.TODO(), OpenIDConnectKeyName, keys))
-					jwtStrategy, err := jwk.NewRS256JWTStrategy(jm, OpenIDConnectKeyName)
-
-					fc.RefreshTokenLifespan = time.Second * 2
-					fc.AccessTokenLifespan = time.Second * 8
-					handler := &Handler{
-						OAuth2: compose.Compose(
-							fc, fs.F, strat.s, hasher,
-							compose.OAuth2AuthorizeExplicitFactory,
-							compose.OAuth2AuthorizeImplicitFactory,
-							compose.OAuth2ClientCredentialsGrantFactory,
-							compose.OAuth2RefreshTokenGrantFactory,
-							compose.OpenIDConnectExplicitFactory,
-							compose.OpenIDConnectHybridFactory,
-							compose.OpenIDConnectImplicitFactory,
-							compose.OAuth2TokenRevocationFactory,
-							compose.OAuth2TokenIntrospectionFactory,
-						),
-						Consent:       consentStrategy,
-						CookieStore:   cookieStore,
-						H:             herodot.NewJSONWriter(l),
-						ScopeStrategy: fosite.ExactScopeStrategy,
-						//IDTokenLifespan: time.Minute,
-						IssuerURL: ts.URL, ForcedHTTP: true, L: l,
-						OpenIDJWTStrategy: jwtStrategy,
-					}
-					handler.SetRoutes(router, router, func(h http.Handler) http.Handler {
+					router := x.NewRouterPublic()
+					var callbackHandler *httprouter.Handle
+					router.GET("/callback", func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+						(*callbackHandler)(w, r, ps)
+					})
+					reg.OAuth2Handler().SetRoutes(router.RouterAdmin(), router, func(h http.Handler) http.Handler {
 						return h
 					})
 
-					apiHandler := consent.NewHandler(herodot.NewJSONWriter(l), cm, cookieStore, "")
-					apiRouter := httprouter.New()
-					apiHandler.SetRoutes(apiRouter, apiRouter)
+					ts := httptest.NewServer(router)
+					defer ts.Close()
+
+					apiRouter := x.NewRouterAdmin()
+					reg.ConsentHandler().SetRoutes(apiRouter)
 					api := httptest.NewServer(apiRouter)
+					defer api.Close()
+
+					viper.Set(configuration.ViperKeyLoginURL, lp.URL)
+					viper.Set(configuration.ViperKeyConsentURL, cp.URL)
+					viper.Set(configuration.ViperKeyIssuerURL, ts.URL)
+					viper.Set(configuration.ViperKeyConsentRequestMaxAge, time.Hour)
 
 					client := hc.Client{
 						ClientID: "e2e-app-client" + km + strat.d, Secret: "secret", RedirectURIs: []string{ts.URL + "/callback"},
@@ -225,13 +248,8 @@ func TestAuthCodeWithDefaultStrategy(t *testing.T) {
 						RedirectURL: client.RedirectURIs[0], Scopes: []string{"hydra", "offline", "openid"},
 					}
 
-					require.NoError(t, fs.F.(clientCreator).CreateClient(context.TODO(), &client))
-					apiClient := swagger.NewAdminApiWithBasePath(api.URL)
-
-					var callbackHandler *httprouter.Handle
-					router.GET("/callback", func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-						(*callbackHandler)(w, r, ps)
-					})
+					require.NoError(t, reg.OAuth2Storage().(clientCreator).CreateClient(context.TODO(), &client))
+					apiClient := hydra.NewHTTPClientWithConfig(nil, &hydra.TransportConfig{Schemes: []string{"http"}, Host: urlx.ParseOrPanic(api.URL).Host})
 
 					persistentCJ := newCookieJar()
 					var code string
@@ -281,44 +299,46 @@ func TestAuthCodeWithDefaultStrategy(t *testing.T) {
 							cj:      newCookieJar(),
 							lph: func(t *testing.T) func(w http.ResponseWriter, r *http.Request) {
 								return func(w http.ResponseWriter, r *http.Request) {
-									rr, res, err := apiClient.GetLoginRequest(r.URL.Query().Get("login_challenge"))
+									rr, err := apiClient.Admin.GetLoginRequest(admin.NewGetLoginRequestParams().WithLoginChallenge(r.URL.Query().Get("login_challenge")))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
-									assert.False(t, rr.Skip)
-									assert.Empty(t, rr.Subject)
-									v, res, err := apiClient.AcceptLoginRequest(r.URL.Query().Get("login_challenge"), swagger.AcceptLoginRequest{
-										Subject: "user-a", Remember: true, RememberFor: 0, Acr: "1",
-									})
+									assert.False(t, rr.Payload.Skip)
+									assert.Empty(t, rr.Payload.Subject)
+									v, err := apiClient.Admin.AcceptLoginRequest(admin.NewAcceptLoginRequestParams().
+										WithLoginChallenge(r.URL.Query().Get("login_challenge")).
+										WithBody(&models.HandledLoginRequest{
+											Subject: pointerx.String("user-a"), Remember: true, RememberFor: 0, ACR: "1",
+											Context: map[string]interface{}{"context": "bar"},
+										}))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
-									require.NotEmpty(t, v.RedirectTo)
-									http.Redirect(w, r, v.RedirectTo, http.StatusFound)
+									require.NotEmpty(t, v.Payload.RedirectTo)
+									http.Redirect(w, r, v.Payload.RedirectTo, http.StatusFound)
 								}
 							},
 							cph: func(t *testing.T) func(w http.ResponseWriter, r *http.Request) {
 								return func(w http.ResponseWriter, r *http.Request) {
-									rr, res, err := apiClient.GetConsentRequest(r.URL.Query().Get("consent_challenge"))
+									rr, err := apiClient.Admin.GetConsentRequest(admin.NewGetConsentRequestParams().WithConsentChallenge(r.URL.Query().Get("consent_challenge")))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
-									assert.False(t, rr.Skip)
-									v, res, err := apiClient.AcceptConsentRequest(r.URL.Query().Get("consent_challenge"), swagger.AcceptConsentRequest{
-										GrantScope: []string{"hydra", "offline", "openid"}, Remember: true, RememberFor: 0,
-										GrantAccessTokenAudience: rr.RequestedAccessTokenAudience,
-										Session: swagger.ConsentRequestSession{
-											AccessToken: map[string]interface{}{"foo": "bar"},
-											IdToken:     map[string]interface{}{"bar": "baz"},
-										},
-									})
+									assert.False(t, rr.Payload.Skip)
+									assert.Equal(t, map[string]interface{}{"context": "bar"}, rr.Payload.Context)
+									v, err := apiClient.Admin.AcceptConsentRequest(admin.NewAcceptConsentRequestParams().
+										WithConsentChallenge(r.URL.Query().Get("consent_challenge")).
+										WithBody(&models.HandledConsentRequest{
+											GrantedScope: []string{"hydra", "offline", "openid"}, Remember: true, RememberFor: 0,
+											GrantedAudience: rr.Payload.RequestedAudience,
+											Session: &models.ConsentRequestSessionData{
+												AccessToken: map[string]interface{}{"foo": "bar"},
+												IDToken:     map[string]interface{}{"bar": "baz"},
+											},
+										}))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
-									require.NotEmpty(t, v.RedirectTo)
-									http.Redirect(w, r, v.RedirectTo, http.StatusFound)
+									require.NotEmpty(t, v.Payload.RedirectTo)
+									http.Redirect(w, r, v.Payload.RedirectTo, http.StatusFound)
 								}
 							},
 							cb: func(t *testing.T) httprouter.Handle {
 								return func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 									code = r.URL.Query().Get("code")
-									require.NotEmpty(t, code)
+									assert.NotEmpty(t, code, "%s", r.URL.String())
 									w.WriteHeader(http.StatusOK)
 								}
 							},
@@ -347,30 +367,34 @@ func TestAuthCodeWithDefaultStrategy(t *testing.T) {
 							cj:      newCookieJar(),
 							lph: func(t *testing.T) func(w http.ResponseWriter, r *http.Request) {
 								return func(w http.ResponseWriter, r *http.Request) {
-									_, res, err := apiClient.GetLoginRequest(r.URL.Query().Get("login_challenge"))
+									_, err := apiClient.Admin.GetLoginRequest(admin.NewGetLoginRequestParams().WithLoginChallenge(r.URL.Query().Get("login_challenge")))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
-									v, res, err := apiClient.AcceptLoginRequest(r.URL.Query().Get("login_challenge"), swagger.AcceptLoginRequest{
-										Subject: "user-a", Remember: false, RememberFor: 0, Acr: "1",
-									})
+									v, err := apiClient.Admin.AcceptLoginRequest(admin.NewAcceptLoginRequestParams().
+										WithLoginChallenge(r.URL.Query().Get("login_challenge")).
+										WithBody(&models.HandledLoginRequest{
+											Subject: pointerx.String("user-a"), Remember: true, RememberFor: 0, ACR: "1",
+										}))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
-									require.NotEmpty(t, v.RedirectTo)
-									http.Redirect(w, r, v.RedirectTo, http.StatusFound)
+									require.NotEmpty(t, v.Payload.RedirectTo)
+									http.Redirect(w, r, v.Payload.RedirectTo, http.StatusFound)
 								}
 							},
 							cph: func(t *testing.T) func(w http.ResponseWriter, r *http.Request) {
 								return func(w http.ResponseWriter, r *http.Request) {
-									rr, res, err := apiClient.GetConsentRequest(r.URL.Query().Get("consent_challenge"))
+									rrr, err := apiClient.Admin.GetConsentRequest(admin.NewGetConsentRequestParams().WithConsentChallenge(r.URL.Query().Get("consent_challenge")))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
-									v, res, err := apiClient.AcceptConsentRequest(r.URL.Query().Get("consent_challenge"), swagger.AcceptConsentRequest{
-										GrantScope: []string{"hydra", "offline", "openid"}, Remember: false, RememberFor: 0,
-										GrantAccessTokenAudience: rr.RequestedAccessTokenAudience,
-										Session:                  swagger.ConsentRequestSession{},
-									})
+									rr := rrr.Payload
+
+									vr, err := apiClient.Admin.AcceptConsentRequest(admin.NewAcceptConsentRequestParams().
+										WithConsentChallenge(r.URL.Query().Get("consent_challenge")).
+										WithBody(&models.HandledConsentRequest{
+											GrantedScope: []string{"hydra", "offline", "openid"}, Remember: false, RememberFor: 0,
+											GrantedAudience: rr.RequestedAudience,
+											Session:         &models.ConsentRequestSessionData{},
+										}))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
+									v := vr.Payload
+
 									require.NotEmpty(t, v.RedirectTo)
 									http.Redirect(w, r, v.RedirectTo, http.StatusFound)
 								}
@@ -387,10 +411,47 @@ func TestAuthCodeWithDefaultStrategy(t *testing.T) {
 							expectIDToken:         true,
 							expectRefreshToken:    true,
 							assertRefreshToken: func(t *testing.T, token *oauth2.Token) {
-								time.Sleep(fc.RefreshTokenLifespan + time.Second)
+								time.Sleep(viper.GetDuration(configuration.ViperKeyRefreshTokenLifespan) + time.Second)
 								token.Expiry = token.Expiry.Add(-time.Hour * 24)
 								_, err := oauthConfig.TokenSource(oauth2.NoContext, token).Token()
 								require.Error(t, err)
+							},
+						}, {
+							d:       "Checks if request fails when subject is empty",
+							authURL: oauthConfig.AuthCodeURL("some-hardcoded-state", oauth2.SetAuthURLParam("audience", "https://not-ory-api/")),
+							cj:      newCookieJar(),
+							lph: func(t *testing.T) func(w http.ResponseWriter, r *http.Request) {
+								return func(w http.ResponseWriter, r *http.Request) {
+									challenge, err := apiClient.Admin.GetLoginRequest(admin.NewGetLoginRequestParams().WithLoginChallenge(r.URL.Query().Get("login_challenge")))
+									require.NoError(t, err)
+									assert.False(t, challenge.Payload.Skip)
+
+									v, err := apiClient.Admin.AcceptLoginRequest(admin.NewAcceptLoginRequestParams().
+										WithLoginChallenge(r.URL.Query().Get("login_challenge")).
+										WithBody(&models.HandledLoginRequest{
+											Subject: pointerx.String(""), Remember: false, RememberFor: 0, ACR: "1",
+										}))
+									require.Error(t, err)
+									require.NotEmpty(t, v.Payload.RedirectTo)
+									http.Redirect(w, r, v.Payload.RedirectTo, http.StatusFound)
+								}
+							},
+							cph: func(t *testing.T) func(w http.ResponseWriter, r *http.Request) {
+								return func(w http.ResponseWriter, r *http.Request) { t.Fatal("This should not have been called") }
+							},
+							cb: func(t *testing.T) httprouter.Handle {
+								return func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+									code = r.URL.Query().Get("code")
+									require.Empty(t, code)
+									w.WriteHeader(http.StatusOK)
+								}
+							},
+							expectOAuthAuthError:  true,
+							expectOAuthTokenError: false,
+							expectIDToken:         false,
+							expectRefreshToken:    false,
+							assertAccessToken: func(t *testing.T, token string) {
+								require.Empty(t, token)
 							},
 						},
 						{
@@ -399,30 +460,36 @@ func TestAuthCodeWithDefaultStrategy(t *testing.T) {
 							cj:      newCookieJar(),
 							lph: func(t *testing.T) func(w http.ResponseWriter, r *http.Request) {
 								return func(w http.ResponseWriter, r *http.Request) {
-									_, res, err := apiClient.GetLoginRequest(r.URL.Query().Get("login_challenge"))
+									_, err := apiClient.Admin.GetLoginRequest(admin.NewGetLoginRequestParams().WithLoginChallenge(r.URL.Query().Get("login_challenge")))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
-									v, res, err := apiClient.AcceptLoginRequest(r.URL.Query().Get("login_challenge"), swagger.AcceptLoginRequest{
-										Subject: "user-a", Remember: false, RememberFor: 0, Acr: "1",
-									})
+
+									v, err := apiClient.Admin.AcceptLoginRequest(admin.NewAcceptLoginRequestParams().
+										WithLoginChallenge(r.URL.Query().Get("login_challenge")).
+										WithBody(&models.HandledLoginRequest{
+											Subject: pointerx.String("user-a"), Remember: false, RememberFor: 0, ACR: "1",
+										}))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
-									require.NotEmpty(t, v.RedirectTo)
-									http.Redirect(w, r, v.RedirectTo, http.StatusFound)
+
+									require.NotEmpty(t, v.Payload.RedirectTo)
+									http.Redirect(w, r, v.Payload.RedirectTo, http.StatusFound)
 								}
 							},
 							cph: func(t *testing.T) func(w http.ResponseWriter, r *http.Request) {
 								return func(w http.ResponseWriter, r *http.Request) {
-									rr, res, err := apiClient.GetConsentRequest(r.URL.Query().Get("consent_challenge"))
+									rrr, err := apiClient.Admin.GetConsentRequest(admin.NewGetConsentRequestParams().WithConsentChallenge(r.URL.Query().Get("consent_challenge")))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
-									v, res, err := apiClient.AcceptConsentRequest(r.URL.Query().Get("consent_challenge"), swagger.AcceptConsentRequest{
-										GrantScope: []string{"hydra", "offline", "openid"}, Remember: false, RememberFor: 0,
-										GrantAccessTokenAudience: rr.RequestedAccessTokenAudience,
-										Session:                  swagger.ConsentRequestSession{},
-									})
+									rr := rrr.Payload
+
+									vr, err := apiClient.Admin.AcceptConsentRequest(admin.NewAcceptConsentRequestParams().
+										WithConsentChallenge(r.URL.Query().Get("consent_challenge")).
+										WithBody(&models.HandledConsentRequest{
+											GrantedScope: []string{"hydra", "offline", "openid"}, Remember: false, RememberFor: 0,
+											GrantedAudience: rr.RequestedAudience,
+											Session:         &models.ConsentRequestSessionData{},
+										}))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
+									v := vr.Payload
+
 									require.NotEmpty(t, v.RedirectTo)
 									http.Redirect(w, r, v.RedirectTo, http.StatusFound)
 								}
@@ -452,55 +519,63 @@ func TestAuthCodeWithDefaultStrategy(t *testing.T) {
 							cj:      newCookieJar(),
 							lph: func(t *testing.T) func(w http.ResponseWriter, r *http.Request) {
 								return func(w http.ResponseWriter, r *http.Request) {
-									rr, res, err := apiClient.GetLoginRequest(r.URL.Query().Get("login_challenge"))
+									rrr, err := apiClient.Admin.GetLoginRequest(admin.NewGetLoginRequestParams().WithLoginChallenge(r.URL.Query().Get("login_challenge")))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
+									rr := rrr.Payload
+
+									require.NoError(t, err)
 									assert.False(t, rr.Skip)
 									assert.Empty(t, rr.Subject)
-									assert.EqualValues(t, []string{"https://api.ory.sh/"}, rr.RequestedAccessTokenAudience)
-									assert.EqualValues(t, client.GetID(), rr.Client.ClientId)
+									assert.EqualValues(t, []string{"https://api.ory.sh/"}, rr.RequestedAudience)
+									assert.EqualValues(t, client.GetID(), rr.Client.ClientID)
 									assert.EqualValues(t, client.GrantTypes, rr.Client.GrantTypes)
-									assert.EqualValues(t, client.LogoURI, rr.Client.LogoUri)
+									assert.EqualValues(t, client.LogoURI, rr.Client.LogoURI)
 									assert.EqualValues(t, client.RedirectURIs, rr.Client.RedirectUris)
 									assert.EqualValues(t, r.URL.Query().Get("login_challenge"), rr.Challenge)
 									assert.EqualValues(t, []string{"hydra", "offline", "openid"}, rr.RequestedScope)
-									assert.EqualValues(t, oauthConfig.AuthCodeURL("some-hardcoded-state", oauth2.SetAuthURLParam("audience", "https://api.ory.sh/")), rr.RequestUrl)
+									assert.EqualValues(t, oauthConfig.AuthCodeURL("some-hardcoded-state", oauth2.SetAuthURLParam("audience", "https://api.ory.sh/")), rr.RequestURL)
 
-									v, res, err := apiClient.AcceptLoginRequest(r.URL.Query().Get("login_challenge"), swagger.AcceptLoginRequest{
-										Subject: "user-a", Remember: true, RememberFor: 0,
-									})
+									v, err := apiClient.Admin.AcceptLoginRequest(admin.NewAcceptLoginRequestParams().
+										WithLoginChallenge(r.URL.Query().Get("login_challenge")).
+										WithBody(&models.HandledLoginRequest{
+											Subject: pointerx.String("user-a"), Remember: true, RememberFor: 0,
+										}))
+
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
-									require.NotEmpty(t, v.RedirectTo)
-									http.Redirect(w, r, v.RedirectTo, http.StatusFound)
+									require.NotEmpty(t, v.Payload.RedirectTo)
+									http.Redirect(w, r, v.Payload.RedirectTo, http.StatusFound)
 								}
 							},
 							cph: func(t *testing.T) func(w http.ResponseWriter, r *http.Request) {
 								return func(w http.ResponseWriter, r *http.Request) {
-									rr, res, err := apiClient.GetConsentRequest(r.URL.Query().Get("consent_challenge"))
+									rrr, err := apiClient.Admin.GetConsentRequest(admin.NewGetConsentRequestParams().WithConsentChallenge(r.URL.Query().Get("consent_challenge")))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
+
+									rr := rrr.Payload
 									assert.True(t, rr.Skip)
 									assert.EqualValues(t, "user-a", rr.Subject)
-									assert.EqualValues(t, client.GetID(), rr.Client.ClientId)
+									assert.EqualValues(t, client.GetID(), rr.Client.ClientID)
 									assert.EqualValues(t, client.GrantTypes, rr.Client.GrantTypes)
-									assert.EqualValues(t, client.LogoURI, rr.Client.LogoUri)
+									assert.EqualValues(t, client.LogoURI, rr.Client.LogoURI)
 									assert.EqualValues(t, client.RedirectURIs, rr.Client.RedirectUris)
-									assert.EqualValues(t, []string{"https://api.ory.sh/"}, rr.RequestedAccessTokenAudience)
+									assert.EqualValues(t, []string{"https://api.ory.sh/"}, rr.RequestedAudience)
 									assert.EqualValues(t, []string{"hydra", "offline", "openid"}, rr.RequestedScope)
 									assert.EqualValues(t, r.URL.Query().Get("consent_challenge"), rr.Challenge)
-									assert.EqualValues(t, oauthConfig.AuthCodeURL("some-hardcoded-state", oauth2.SetAuthURLParam("audience", "https://api.ory.sh/")), rr.RequestUrl)
+									assert.EqualValues(t, oauthConfig.AuthCodeURL("some-hardcoded-state", oauth2.SetAuthURLParam("audience", "https://api.ory.sh/")), rr.RequestURL)
 
-									v, res, err := apiClient.AcceptConsentRequest(r.URL.Query().Get("consent_challenge"), swagger.AcceptConsentRequest{
-										GrantScope: []string{"hydra", "offline", "openid"}, Remember: false, RememberFor: 0,
-										GrantAccessTokenAudience: rr.RequestedAccessTokenAudience,
-										Session: swagger.ConsentRequestSession{
-											AccessToken: map[string]interface{}{"foo": "bar"},
-											IdToken:     map[string]interface{}{"bar": "baz"},
-										},
-									})
+									vr, err := apiClient.Admin.AcceptConsentRequest(admin.NewAcceptConsentRequestParams().
+										WithConsentChallenge(r.URL.Query().Get("consent_challenge")).
+										WithBody(&models.HandledConsentRequest{
+											GrantedScope: []string{"hydra", "offline", "openid"}, Remember: false, RememberFor: 0,
+											GrantedAudience: rr.RequestedAudience,
+											Session: &models.ConsentRequestSessionData{
+												AccessToken: map[string]interface{}{"foo": "bar"},
+												IDToken:     map[string]interface{}{"bar": "baz"},
+											},
+										}))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
+									v := vr.Payload
+
 									require.NotEmpty(t, v.RedirectTo)
 									http.Redirect(w, r, v.RedirectTo, http.StatusFound)
 								}
@@ -525,13 +600,13 @@ func TestAuthCodeWithDefaultStrategy(t *testing.T) {
 									body, err := ioutil.ReadAll(res.Body)
 									require.NoError(t, err)
 
-									var r swagger.OAuth2TokenIntrospection
+									var r models.Introspection
 									require.NoError(t, json.Unmarshal(body, &r))
-									assert.EqualValues(t, "e2e-app-client"+km+strat.d, r.ClientId)
-									assert.EqualValues(t, "user-a", r.Sub)
-									assert.EqualValues(t, []string{"https://api.ory.sh/"}, r.Aud)
+									assert.EqualValues(t, "e2e-app-client"+km+strat.d, r.ClientID)
+									assert.EqualValues(t, "user-a", r.Subject)
+									assert.EqualValues(t, []string{"https://api.ory.sh/"}, r.Audience)
 									assert.EqualValues(t, "hydra offline openid", r.Scope)
-									assert.EqualValues(t, "map[foo:bar]", fmt.Sprintf("%s", r.Ext))
+									assert.EqualValues(t, "map[foo:bar]", fmt.Sprintf("%s", r.Extra))
 									return
 								}
 
@@ -562,52 +637,60 @@ func TestAuthCodeWithDefaultStrategy(t *testing.T) {
 							cj:      persistentCJ,
 							lph: func(t *testing.T) func(w http.ResponseWriter, r *http.Request) {
 								return func(w http.ResponseWriter, r *http.Request) {
-									rr, res, err := apiClient.GetLoginRequest(r.URL.Query().Get("login_challenge"))
+									rrr, err := apiClient.Admin.GetLoginRequest(admin.NewGetLoginRequestParams().WithLoginChallenge(r.URL.Query().Get("login_challenge")))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
+									rr := rrr.Payload
+
 									assert.False(t, rr.Skip)
 									assert.Empty(t, rr.Subject)
-									assert.EqualValues(t, client.GetID(), rr.Client.ClientId)
+									assert.EqualValues(t, client.GetID(), rr.Client.ClientID)
 									assert.EqualValues(t, client.GrantTypes, rr.Client.GrantTypes)
-									assert.EqualValues(t, client.LogoURI, rr.Client.LogoUri)
+									assert.EqualValues(t, client.LogoURI, rr.Client.LogoURI)
 									assert.EqualValues(t, client.RedirectURIs, rr.Client.RedirectUris)
 									assert.EqualValues(t, r.URL.Query().Get("login_challenge"), rr.Challenge)
 									assert.EqualValues(t, []string{"hydra", "offline", "openid"}, rr.RequestedScope)
-									assert.EqualValues(t, oauthConfig.AuthCodeURL("some-hardcoded-state")+"&prompt=login+consent&max_age=1", rr.RequestUrl)
+									assert.EqualValues(t, oauthConfig.AuthCodeURL("some-hardcoded-state")+"&prompt=login+consent&max_age=1", rr.RequestURL)
 
-									v, res, err := apiClient.AcceptLoginRequest(r.URL.Query().Get("login_challenge"), swagger.AcceptLoginRequest{
-										Subject: "user-a", Remember: true, RememberFor: 0,
-									})
+									vr, err := apiClient.Admin.AcceptLoginRequest(admin.NewAcceptLoginRequestParams().
+										WithLoginChallenge(r.URL.Query().Get("login_challenge")).
+										WithBody(&models.HandledLoginRequest{
+											Subject: pointerx.String("user-a"), Remember: true, RememberFor: 0,
+										}))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
+									v := vr.Payload
+
 									require.NotEmpty(t, v.RedirectTo)
 									http.Redirect(w, r, v.RedirectTo, http.StatusFound)
 								}
 							},
 							cph: func(t *testing.T) func(w http.ResponseWriter, r *http.Request) {
 								return func(w http.ResponseWriter, r *http.Request) {
-									rr, res, err := apiClient.GetConsentRequest(r.URL.Query().Get("consent_challenge"))
+									rrr, err := apiClient.Admin.GetConsentRequest(admin.NewGetConsentRequestParams().WithConsentChallenge(r.URL.Query().Get("consent_challenge")))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
+
+									rr := rrr.Payload
 									assert.False(t, rr.Skip)
 									assert.EqualValues(t, "user-a", rr.Subject)
-									assert.EqualValues(t, client.GetID(), rr.Client.ClientId)
+									assert.EqualValues(t, client.GetID(), rr.Client.ClientID)
 									assert.EqualValues(t, client.GrantTypes, rr.Client.GrantTypes)
-									assert.EqualValues(t, client.LogoURI, rr.Client.LogoUri)
+									assert.EqualValues(t, client.LogoURI, rr.Client.LogoURI)
 									assert.EqualValues(t, client.RedirectURIs, rr.Client.RedirectUris)
 									assert.EqualValues(t, []string{"hydra", "offline", "openid"}, rr.RequestedScope)
 									assert.EqualValues(t, r.URL.Query().Get("consent_challenge"), rr.Challenge)
-									assert.EqualValues(t, oauthConfig.AuthCodeURL("some-hardcoded-state")+"&prompt=login+consent&max_age=1", rr.RequestUrl)
+									assert.EqualValues(t, oauthConfig.AuthCodeURL("some-hardcoded-state")+"&prompt=login+consent&max_age=1", rr.RequestURL)
 
-									v, res, err := apiClient.AcceptConsentRequest(r.URL.Query().Get("consent_challenge"), swagger.AcceptConsentRequest{
-										GrantScope: []string{"hydra", "offline", "openid"}, Remember: true, RememberFor: 0,
-										Session: swagger.ConsentRequestSession{
-											AccessToken: map[string]interface{}{"foo": "bar"},
-											IdToken:     map[string]interface{}{"bar": "baz"},
-										},
-									})
+									vr, err := apiClient.Admin.AcceptConsentRequest(admin.NewAcceptConsentRequestParams().
+										WithConsentChallenge(r.URL.Query().Get("consent_challenge")).
+										WithBody(&models.HandledConsentRequest{
+											GrantedScope: []string{"hydra", "offline", "openid"}, Remember: true, RememberFor: 0,
+											Session: &models.ConsentRequestSessionData{
+												AccessToken: map[string]interface{}{"foo": "bar"},
+												IDToken:     map[string]interface{}{"bar": "baz"},
+											},
+										}))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
+									v := vr.Payload
+
 									require.NotEmpty(t, v.RedirectTo)
 									http.Redirect(w, r, v.RedirectTo, http.StatusFound)
 								}
@@ -655,42 +738,8 @@ func TestAuthCodeWithDefaultStrategy(t *testing.T) {
 							},
 							authURL: oauthConfig.AuthCodeURL("some-hardcoded-state") + "&prompt=none&max_age=60",
 							cj:      persistentCJ,
-							lph: func(t *testing.T) func(w http.ResponseWriter, r *http.Request) {
-								return func(w http.ResponseWriter, r *http.Request) {
-									rr, res, err := apiClient.GetLoginRequest(r.URL.Query().Get("login_challenge"))
-									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
-									assert.True(t, rr.Skip)
-									assert.EqualValues(t, "user-a", rr.Subject)
-
-									v, res, err := apiClient.AcceptLoginRequest(r.URL.Query().Get("login_challenge"), swagger.AcceptLoginRequest{Subject: "user-a"})
-									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
-									require.NotEmpty(t, v.RedirectTo)
-									http.Redirect(w, r, v.RedirectTo, http.StatusFound)
-								}
-							},
-							cph: func(t *testing.T) func(w http.ResponseWriter, r *http.Request) {
-								return func(w http.ResponseWriter, r *http.Request) {
-									rr, res, err := apiClient.GetConsentRequest(r.URL.Query().Get("consent_challenge"))
-									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
-									assert.True(t, rr.Skip)
-									assert.EqualValues(t, "user-a", rr.Subject)
-
-									v, res, err := apiClient.AcceptConsentRequest(r.URL.Query().Get("consent_challenge"), swagger.AcceptConsentRequest{
-										GrantScope: []string{"hydra", "offline"},
-										Session: swagger.ConsentRequestSession{
-											AccessToken: map[string]interface{}{"foo": "bar"},
-											IdToken:     map[string]interface{}{"bar": "baz"},
-										},
-									})
-									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
-									require.NotEmpty(t, v.RedirectTo)
-									http.Redirect(w, r, v.RedirectTo, http.StatusFound)
-								}
-							},
+							lph:     acceptLogin(apiClient, "user-a", true, "user-a"),
+							cph:     acceptConsent(apiClient, []string{"hydra", "offline"}, true, "user-a"),
 							cb: func(t *testing.T) httprouter.Handle {
 								return func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 									code = r.URL.Query().Get("code")
@@ -711,13 +760,13 @@ func TestAuthCodeWithDefaultStrategy(t *testing.T) {
 									body, err := ioutil.ReadAll(res.Body)
 									require.NoError(t, err)
 
-									var r swagger.OAuth2TokenIntrospection
+									var r models.Introspection
 									require.NoError(t, json.Unmarshal(body, &r))
-									assert.EqualValues(t, "e2e-app-client"+km+strat.d, r.ClientId)
-									assert.EqualValues(t, "user-a", r.Sub)
-									assert.Empty(t, r.Aud)
+									assert.EqualValues(t, "e2e-app-client"+km+strat.d, r.ClientID)
+									assert.EqualValues(t, "user-a", r.Subject)
+									assert.Empty(t, r.Audience)
 									assert.EqualValues(t, "hydra offline", r.Scope)
-									assert.EqualValues(t, "map[foo:bar]", fmt.Sprintf("%s", r.Ext))
+									assert.EqualValues(t, "map[foo:bar]", fmt.Sprintf("%s", r.Extra))
 									return
 								}
 
@@ -748,6 +797,57 @@ func TestAuthCodeWithDefaultStrategy(t *testing.T) {
 							expectOAuthTokenError: false,
 						},
 						{
+							d:                     "checks if consecutive authentications cause any issues (1/3)",
+							authURL:               oauthConfig.AuthCodeURL("some-hardcoded-state") + "&prompt=none&max_age=60",
+							cj:                    persistentCJ,
+							lph:                   acceptLogin(apiClient, "user-a", true, "user-a"),
+							cph:                   acceptConsent(apiClient, []string{"hydra", "offline"}, true, "user-a"),
+							expectOAuthAuthError:  false,
+							expectOAuthTokenError: false,
+							expectRefreshToken:    true,
+							cb: func(t *testing.T) httprouter.Handle {
+								return func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+									code = r.URL.Query().Get("code")
+									require.NotEmpty(t, code)
+									w.WriteHeader(http.StatusOK)
+								}
+							},
+						},
+						{
+							d:                     "checks if consecutive authentications cause any issues (2/3)",
+							authURL:               oauthConfig.AuthCodeURL("some-hardcoded-state") + "&prompt=none&max_age=60",
+							cj:                    persistentCJ,
+							lph:                   acceptLogin(apiClient, "user-a", true, "user-a"),
+							cph:                   acceptConsent(apiClient, []string{"hydra", "offline"}, true, "user-a"),
+							expectOAuthAuthError:  false,
+							expectOAuthTokenError: false,
+							expectRefreshToken:    true,
+							cb: func(t *testing.T) httprouter.Handle {
+								return func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+									code = r.URL.Query().Get("code")
+									require.NotEmpty(t, code)
+									w.WriteHeader(http.StatusOK)
+								}
+							},
+						},
+						{
+							d:                     "checks if consecutive authentications cause any issues (3/3)",
+							authURL:               oauthConfig.AuthCodeURL("some-hardcoded-state") + "&prompt=none&max_age=60",
+							cj:                    persistentCJ,
+							lph:                   acceptLogin(apiClient, "user-a", true, "user-a"),
+							cph:                   acceptConsent(apiClient, []string{"hydra", "offline"}, true, "user-a"),
+							expectOAuthAuthError:  false,
+							expectOAuthTokenError: false,
+							expectRefreshToken:    true,
+							cb: func(t *testing.T) httprouter.Handle {
+								return func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+									code = r.URL.Query().Get("code")
+									require.NotEmpty(t, code)
+									w.WriteHeader(http.StatusOK)
+								}
+							},
+						},
+						{
 							d:                     "checks if authenticatedAt/requestedAt is properly forwarded across the lifecycle by checking if prompt=none fails when maxAge is reached",
 							authURL:               oauthConfig.AuthCodeURL("some-hardcoded-state") + "&prompt=none&max_age=1",
 							cj:                    persistentCJ,
@@ -760,36 +860,46 @@ func TestAuthCodeWithDefaultStrategy(t *testing.T) {
 							cj:      persistentCJ,
 							lph: func(t *testing.T) func(w http.ResponseWriter, r *http.Request) {
 								return func(w http.ResponseWriter, r *http.Request) {
-									rr, res, err := apiClient.GetLoginRequest(r.URL.Query().Get("login_challenge"))
+									rrr, err := apiClient.Admin.GetLoginRequest(admin.NewGetLoginRequestParams().WithLoginChallenge(r.URL.Query().Get("login_challenge")))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
+
+									rr := rrr.Payload
 									assert.False(t, rr.Skip)
 									assert.EqualValues(t, "", rr.Subject)
 
-									v, res, err := apiClient.AcceptLoginRequest(r.URL.Query().Get("login_challenge"), swagger.AcceptLoginRequest{Subject: "user-a"})
+									vr, err := apiClient.Admin.AcceptLoginRequest(admin.NewAcceptLoginRequestParams().
+										WithLoginChallenge(r.URL.Query().Get("login_challenge")).
+										WithBody(&models.HandledLoginRequest{
+											Subject: pointerx.String("user-a"),
+										}))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
+									v := vr.Payload
+
 									require.NotEmpty(t, v.RedirectTo)
 									http.Redirect(w, r, v.RedirectTo, http.StatusFound)
 								}
 							},
 							cph: func(t *testing.T) func(w http.ResponseWriter, r *http.Request) {
 								return func(w http.ResponseWriter, r *http.Request) {
-									rr, res, err := apiClient.GetConsentRequest(r.URL.Query().Get("consent_challenge"))
+									rrr, err := apiClient.Admin.GetConsentRequest(admin.NewGetConsentRequestParams().WithConsentChallenge(r.URL.Query().Get("consent_challenge")))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
+									rr := rrr.Payload
+
 									assert.True(t, rr.Skip)
 									assert.EqualValues(t, "user-a", rr.Subject)
 
-									v, res, err := apiClient.AcceptConsentRequest(r.URL.Query().Get("consent_challenge"), swagger.AcceptConsentRequest{
-										GrantScope: []string{"hydra", "openid"},
-										Session: swagger.ConsentRequestSession{
-											AccessToken: map[string]interface{}{"foo": "bar"},
-											IdToken:     map[string]interface{}{"bar": "baz"},
-										},
-									})
+									vr, err := apiClient.Admin.AcceptConsentRequest(admin.NewAcceptConsentRequestParams().
+										WithConsentChallenge(r.URL.Query().Get("consent_challenge")).
+										WithBody(&models.HandledConsentRequest{
+											GrantedScope: []string{"hydra", "openid"},
+											Session: &models.ConsentRequestSessionData{
+												AccessToken: map[string]interface{}{"foo": "bar"},
+												IDToken:     map[string]interface{}{"bar": "baz"},
+											},
+										}))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
+									v := vr.Payload
+
 									require.NotEmpty(t, v.RedirectTo)
 									http.Redirect(w, r, v.RedirectTo, http.StatusFound)
 								}
@@ -812,38 +922,47 @@ func TestAuthCodeWithDefaultStrategy(t *testing.T) {
 							cj:      persistentCJ,
 							lph: func(t *testing.T) func(w http.ResponseWriter, r *http.Request) {
 								return func(w http.ResponseWriter, r *http.Request) {
-									rr, res, err := apiClient.GetLoginRequest(r.URL.Query().Get("login_challenge"))
+									rrr, err := apiClient.Admin.GetLoginRequest(admin.NewGetLoginRequestParams().WithLoginChallenge(r.URL.Query().Get("login_challenge")))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
+
+									rr := rrr.Payload
 									assert.False(t, rr.Skip)
 									assert.EqualValues(t, "", rr.Subject)
-									assert.Empty(t, rr.Client.ClientSecret)
+									assert.Empty(t, rr.Client.Secret)
 
-									v, res, err := apiClient.AcceptLoginRequest(r.URL.Query().Get("login_challenge"), swagger.AcceptLoginRequest{Subject: "user-a"})
+									vr, err := apiClient.Admin.AcceptLoginRequest(admin.NewAcceptLoginRequestParams().
+										WithLoginChallenge(r.URL.Query().Get("login_challenge")).
+										WithBody(&models.HandledLoginRequest{
+											Subject: pointerx.String("user-a"),
+										}))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
+									v := vr.Payload
+
 									require.NotEmpty(t, v.RedirectTo)
 									http.Redirect(w, r, v.RedirectTo, http.StatusFound)
 								}
 							},
 							cph: func(t *testing.T) func(w http.ResponseWriter, r *http.Request) {
 								return func(w http.ResponseWriter, r *http.Request) {
-									rr, res, err := apiClient.GetConsentRequest(r.URL.Query().Get("consent_challenge"))
+									rrr, err := apiClient.Admin.GetConsentRequest(admin.NewGetConsentRequestParams().WithConsentChallenge(r.URL.Query().Get("consent_challenge")))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
+									rr := rrr.Payload
 									assert.True(t, rr.Skip)
 									assert.EqualValues(t, "user-a", rr.Subject)
-									assert.Empty(t, rr.Client.ClientSecret)
+									assert.Empty(t, rr.Client.Secret)
 
-									v, res, err := apiClient.AcceptConsentRequest(r.URL.Query().Get("consent_challenge"), swagger.AcceptConsentRequest{
-										GrantScope: []string{"hydra", "openid"},
-										Session: swagger.ConsentRequestSession{
-											AccessToken: map[string]interface{}{"foo": "bar"},
-											IdToken:     map[string]interface{}{"bar": "baz"},
-										},
-									})
+									vr, err := apiClient.Admin.AcceptConsentRequest(admin.NewAcceptConsentRequestParams().
+										WithConsentChallenge(r.URL.Query().Get("consent_challenge")).
+										WithBody(&models.HandledConsentRequest{
+											GrantedScope: []string{"hydra", "openid"},
+											Session: &models.ConsentRequestSessionData{
+												AccessToken: map[string]interface{}{"foo": "bar"},
+												IDToken:     map[string]interface{}{"bar": "baz"},
+											},
+										}))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
+									v := vr.Payload
+
 									require.NotEmpty(t, v.RedirectTo)
 									http.Redirect(w, r, v.RedirectTo, http.StatusFound)
 								}
@@ -889,34 +1008,40 @@ func TestAuthCodeWithDefaultStrategy(t *testing.T) {
 							//cj:      persistentCJ,
 							lph: func(t *testing.T) func(w http.ResponseWriter, r *http.Request) {
 								return func(w http.ResponseWriter, r *http.Request) {
-									_, res, err := apiClient.GetLoginRequest(r.URL.Query().Get("login_challenge"))
+									_, err := apiClient.Admin.GetLoginRequest(admin.NewGetLoginRequestParams().WithLoginChallenge(r.URL.Query().Get("login_challenge")))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
 
 									time.Sleep(time.Second * 2)
 
-									v, res, err := apiClient.AcceptLoginRequest(r.URL.Query().Get("login_challenge"), swagger.AcceptLoginRequest{Subject: "user-a"})
+									vr, err := apiClient.Admin.AcceptLoginRequest(admin.NewAcceptLoginRequestParams().
+										WithLoginChallenge(r.URL.Query().Get("login_challenge")).
+										WithBody(&models.HandledLoginRequest{
+											Subject: pointerx.String("user-a"), Remember: true, RememberFor: 0, ACR: "1",
+										}))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
+									v := vr.Payload
+
 									require.NotEmpty(t, v.RedirectTo)
 									http.Redirect(w, r, v.RedirectTo, http.StatusFound)
 								}
 							},
 							cph: func(t *testing.T) func(w http.ResponseWriter, r *http.Request) {
 								return func(w http.ResponseWriter, r *http.Request) {
-									_, res, err := apiClient.GetConsentRequest(r.URL.Query().Get("consent_challenge"))
+									_, err := apiClient.Admin.GetConsentRequest(admin.NewGetConsentRequestParams().WithConsentChallenge(r.URL.Query().Get("consent_challenge")))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
 
-									v, res, err := apiClient.AcceptConsentRequest(r.URL.Query().Get("consent_challenge"), swagger.AcceptConsentRequest{
-										GrantScope: []string{"hydra", "openid"},
-										Session: swagger.ConsentRequestSession{
-											AccessToken: map[string]interface{}{"foo": "bar"},
-											IdToken:     map[string]interface{}{"bar": "baz"},
-										},
-									})
+									vr, err := apiClient.Admin.AcceptConsentRequest(admin.NewAcceptConsentRequestParams().
+										WithConsentChallenge(r.URL.Query().Get("consent_challenge")).
+										WithBody(&models.HandledConsentRequest{
+											GrantedScope: []string{"hydra", "openid"},
+											Session: &models.ConsentRequestSessionData{
+												AccessToken: map[string]interface{}{"foo": "bar"},
+												IDToken:     map[string]interface{}{"bar": "baz"},
+											},
+										}))
 									require.NoError(t, err)
-									require.EqualValues(t, http.StatusOK, res.StatusCode)
+									v := vr.Payload
+
 									require.NotEmpty(t, v.RedirectTo)
 									http.Redirect(w, r, v.RedirectTo, http.StatusFound)
 								}
@@ -974,12 +1099,20 @@ func TestAuthCodeWithDefaultStrategy(t *testing.T) {
 							require.NoError(t, err)
 							defer resp.Body.Close()
 
+							t.Logf("Cookies: %+v", tc.cj)
+
+							time.Sleep(time.Millisecond * 5)
+
 							if tc.expectOAuthAuthError {
 								require.Empty(t, code)
 								return
 							}
 
-							require.NotEmpty(t, code)
+							var body []byte
+							if code == "" {
+								body, _ = ioutil.ReadAll(resp.Body)
+							}
+							require.NotEmpty(t, code, "body: %s\nreq: %s\nts: %s", body, req.URL.String(), ts.URL)
 
 							token, err := oauthConfig.Exchange(oauth2.NoContext, code)
 
@@ -1028,64 +1161,24 @@ func TestAuthCodeWithDefaultStrategy(t *testing.T) {
 // - [x] should pass with prompt=login when authentication time is recent
 // - [x] should fail with prompt=login when authentication time is in the past
 func TestAuthCodeWithMockStrategy(t *testing.T) {
-	for _, strat := range []struct {
-		d string
-		s foauth2.CoreStrategy
-	}{
-		{
-			d: "opaque",
-			s: oauth2OpqaueStrategy,
-		},
-		{
-			d: "jwt",
-			s: oauth2JWTStrategy,
-		},
-	} {
+	for _, strat := range []struct{ d string }{{d: "opaque"}, {d: "jwt"}} {
 		t.Run("strategy="+strat.d, func(t *testing.T) {
+			conf := internal.NewConfigurationWithDefaults()
+			viper.Set(configuration.ViperKeyAccessTokenLifespan, time.Second*2)
+			viper.Set(configuration.ViperKeyScopeStrategy, "DEPRECATED_HIERARCHICAL_SCOPE_STRATEGY")
+			viper.Set(configuration.ViperKeyAccessTokenStrategy, strat.d)
+			reg := internal.NewRegistry(conf)
+			internal.MustEnsureRegistryKeys(reg, x.OpenIDConnectKeyName)
+			internal.MustEnsureRegistryKeys(reg, x.OAuth2JWTKeyName)
+
 			consentStrategy := &consentMock{}
-			router := httprouter.New()
+			router := x.NewRouterPublic()
 			ts := httptest.NewServer(router)
-			store := NewFositeMemoryStore(hc.NewMemoryManager(hasher), time.Second*2)
+			defer ts.Close()
 
-			l := logrus.New()
-			l.Level = logrus.DebugLevel
-
-			jm := &jwk.MemoryManager{Keys: map[string]*jose.JSONWebKeySet{}}
-			keys, err := (&jwk.RS256Generator{}).Generate("", "sig")
-			require.NoError(t, err)
-			require.NoError(t, jm.AddKeySet(context.TODO(), OpenIDConnectKeyName, keys))
-			jwtStrategy, err := jwk.NewRS256JWTStrategy(jm, OpenIDConnectKeyName)
-
-			handler := &Handler{
-				OAuth2: compose.Compose(
-					&compose.Config{
-						AccessTokenLifespan:        time.Second * 2,
-						SendDebugMessagesToClients: true,
-					},
-					store,
-					strat.s,
-					nil,
-					compose.OAuth2AuthorizeExplicitFactory,
-					compose.OAuth2AuthorizeImplicitFactory,
-					compose.OAuth2ClientCredentialsGrantFactory,
-					compose.OAuth2RefreshTokenGrantFactory,
-					compose.OpenIDConnectExplicitFactory,
-					compose.OpenIDConnectHybridFactory,
-					compose.OpenIDConnectImplicitFactory,
-					compose.OAuth2TokenRevocationFactory,
-					compose.OAuth2TokenIntrospectionFactory,
-				),
-				Consent:       consentStrategy,
-				CookieStore:   sessions.NewCookieStore([]byte("foo-secret")),
-				ForcedHTTP:    true,
-				L:             l,
-				H:             herodot.NewJSONWriter(l),
-				ScopeStrategy: fosite.HierarchicScopeStrategy,
-				//IDTokenLifespan:   time.Minute,
-				IssuerURL:         ts.URL,
-				OpenIDJWTStrategy: jwtStrategy,
-			}
-			handler.SetRoutes(router, router, func(h http.Handler) http.Handler {
+			reg.WithConsentStrategy(consentStrategy)
+			handler := reg.OAuth2Handler()
+			handler.SetRoutes(router.RouterAdmin(), router, func(h http.Handler) http.Handler {
 				return h
 			})
 
@@ -1093,16 +1186,16 @@ func TestAuthCodeWithMockStrategy(t *testing.T) {
 			router.GET("/callback", func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 				(*callbackHandler)(w, r, ps)
 			})
-			m := sync.Mutex{}
+			var mutex sync.Mutex
 
-			store.CreateClient(context.TODO(), &hc.Client{
+			require.NoError(t, reg.ClientManager().CreateClient(context.TODO(), &hc.Client{
 				ClientID:      "app-client",
 				Secret:        "secret",
 				RedirectURIs:  []string{ts.URL + "/callback"},
 				ResponseTypes: []string{"id_token", "code", "token"},
 				GrantTypes:    []string{"implicit", "refresh_token", "authorization_code", "password", "client_credentials"},
 				Scope:         "hydra.* offline openid",
-			})
+			}))
 
 			oauthConfig := &oauth2.Config{
 				ClientID:     "app-client",
@@ -1252,8 +1345,8 @@ func TestAuthCodeWithMockStrategy(t *testing.T) {
 				},
 			} {
 				t.Run(fmt.Sprintf("case=%d/description=%s", k, tc.d), func(t *testing.T) {
-					m.Lock()
-					defer m.Unlock()
+					mutex.Lock()
+					defer mutex.Unlock()
 					if tc.cb == nil {
 						tc.cb = noopHandler
 					}
@@ -1273,7 +1366,7 @@ func TestAuthCodeWithMockStrategy(t *testing.T) {
 					}
 
 					resp, err := (&http.Client{Jar: tc.cj}).Do(req)
-					require.NoError(t, err)
+					require.NoError(t, err, tc.authURL, ts.URL)
 					defer resp.Body.Close()
 
 					if tc.expectOAuthAuthError {

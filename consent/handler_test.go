@@ -18,80 +18,113 @@
  * @license 	Apache-2.0
  */
 
-package consent
+package consent_test
 
 import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/http/cookiejar"
 	"net/http/httptest"
-	"net/url"
 	"testing"
-	"time"
 
-	"github.com/gorilla/sessions"
-	"github.com/julienschmidt/httprouter"
-	"github.com/pborman/uuid"
-	"github.com/stretchr/testify/assert"
+	"github.com/ory/hydra/x"
+
+	"github.com/ory/hydra/internal"
+
 	"github.com/stretchr/testify/require"
 
-	"github.com/ory/herodot"
 	"github.com/ory/hydra/client"
+	. "github.com/ory/hydra/consent"
 )
 
-func TestLogout(t *testing.T) {
-	cs := sessions.NewCookieStore([]byte("secret"))
-	r := httprouter.New()
-	h := NewHandler(
-		herodot.NewJSONWriter(nil),
-		NewMemoryManager(nil),
-		cs,
-		"https://www.ory.sh",
-	)
+//func TestLogout(t *testing.T) {
+//	conf := internal.NewConfigurationWithDefaults()
+//	reg := internal.NewRegistry(conf)
+//
+//	r := x.NewRouterPublic()
+//	h := NewHandler(reg, conf)
+//
+//	sid := uuid.New()
+//
+//	r.Handle("GET", "/login", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+//		cookie, _ := reg.CookieStore().Get(r, CookieAuthenticationName)
+//		require.NoError(t, reg.ConsentManager().CreateAuthenticationSession(context.TODO(), &AuthenticationSession{
+//			ID:              sid,
+//			Subject:         "foo",
+//			AuthenticatedAt: time.Now(),
+//		}))
+//
+//		cookie.Values[CookieAuthenticationSIDName] = sid
+//		cookie.Options.MaxAge = 60
+//
+//		require.NoError(t, cookie.Save(r, w))
+//	})
+//
+//	r.Handle("GET", "/logout", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+//	})
+//
+//	h.SetRoutes(r.RouterAdmin(), r)
+//	ts := httptest.NewServer(r)
+//	defer ts.Close()
+//
+//	viper.Set(configuration.ViperKeyLogoutRedirectURL, ts.URL+"/logout")
+//
+//	u, err := url.Parse(ts.URL)
+//	require.NoError(t, err)
+//
+//	cj, err := cookiejar.New(new(cookiejar.Options))
+//	require.NoError(t, err)
+//
+//	c := &http.Client{Jar: cj}
+//	resp, err := c.Get(ts.URL + "/login")
+//	require.NoError(t, err)
+//	require.EqualValues(t, http.StatusOK, resp.StatusCode)
+//	require.Len(t, cj.Cookies(u), 1)
+//
+//	resp, err = c.Get(ts.URL + "/oauth2/auth/sessions/login/revoke")
+//	require.NoError(t, err)
+//	require.EqualValues(t, http.StatusOK, resp.StatusCode)
+//	assert.Len(t, cj.Cookies(u), 0)
+//	assert.EqualValues(t, ts.URL+"/logout", resp.Request.URL.String())
+//}
 
-	sid := uuid.New()
+func TestGetLogoutRequest(t *testing.T) {
+	for k, tc := range []struct {
+		exists bool
+		used   bool
+		status int
+	}{
+		{false, false, http.StatusNotFound},
+		{true, false, http.StatusOK},
+		{true, true, http.StatusConflict},
+	} {
+		t.Run(fmt.Sprintf("case=%d", k), func(t *testing.T) {
+			key := fmt.Sprint(k)
+			challenge := "challenge" + key
 
-	r.Handle("GET", "/login", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-		cookie, _ := cs.Get(r, cookieAuthenticationName)
-		require.NoError(t, h.M.CreateAuthenticationSession(context.TODO(), &AuthenticationSession{
-			ID:              sid,
-			Subject:         "foo",
-			AuthenticatedAt: time.Now(),
-		}))
+			conf := internal.NewConfigurationWithDefaults()
+			reg := internal.NewRegistry(conf)
 
-		cookie.Values[cookieAuthenticationSIDName] = sid
-		cookie.Options.MaxAge = 60
+			if tc.exists {
+				require.NoError(t, reg.ConsentManager().CreateLogoutRequest(context.TODO(), &LogoutRequest{
+					Client:    &client.Client{ClientID: "client" + key},
+					Challenge: challenge,
+					WasUsed:   tc.used,
+				}))
+			}
 
-		require.NoError(t, cookie.Save(r, w))
-	})
+			h := NewHandler(reg, conf)
+			r := x.NewRouterAdmin()
+			h.SetRoutes(r)
+			ts := httptest.NewServer(r)
+			defer ts.Close()
 
-	r.Handle("GET", "/logout", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	})
-
-	h.SetRoutes(r, r)
-	ts := httptest.NewServer(r)
-	defer ts.Close()
-
-	h.LogoutRedirectURL = ts.URL + "/logout"
-
-	u, err := url.Parse(ts.URL)
-	require.NoError(t, err)
-
-	cj, err := cookiejar.New(new(cookiejar.Options))
-	require.NoError(t, err)
-
-	c := &http.Client{Jar: cj}
-	resp, err := c.Get(ts.URL + "/login")
-	require.NoError(t, err)
-	require.EqualValues(t, http.StatusOK, resp.StatusCode)
-	require.Len(t, cj.Cookies(u), 1)
-
-	resp, err = c.Get(ts.URL + "/oauth2/auth/sessions/login/revoke")
-	require.NoError(t, err)
-	require.EqualValues(t, http.StatusOK, resp.StatusCode)
-	assert.Len(t, cj.Cookies(u), 0)
-	assert.EqualValues(t, ts.URL+"/logout", resp.Request.URL.String())
+			c := &http.Client{}
+			resp, err := c.Get(ts.URL + LogoutPath + "?challenge=" + challenge)
+			require.NoError(t, err)
+			require.EqualValues(t, tc.status, resp.StatusCode)
+		})
+	}
 }
 
 func TestGetLoginRequest(t *testing.T) {
@@ -107,27 +140,26 @@ func TestGetLoginRequest(t *testing.T) {
 		t.Run(fmt.Sprintf("case=%d", k), func(t *testing.T) {
 			key := fmt.Sprint(k)
 			challenge := "challenge" + key
-			m := NewMemoryManager(nil)
+
+			conf := internal.NewConfigurationWithDefaults()
+			reg := internal.NewRegistry(conf)
+
 			if tc.exists {
-				require.NoError(t, m.CreateAuthenticationRequest(context.TODO(), &AuthenticationRequest{
+				require.NoError(t, reg.ConsentManager().CreateLoginRequest(context.TODO(), &LoginRequest{
 					Client:     &client.Client{ClientID: "client" + key},
 					Challenge:  challenge,
 					WasHandled: tc.handled,
 				}))
 			}
-			r := httprouter.New()
-			h := NewHandler(
-				herodot.NewJSONWriter(nil),
-				m,
-				nil,
-				"https://www.ory.sh",
-			)
-			h.SetRoutes(r, r)
+
+			h := NewHandler(reg, conf)
+			r := x.NewRouterAdmin()
+			h.SetRoutes(r)
 			ts := httptest.NewServer(r)
 			defer ts.Close()
 
 			c := &http.Client{}
-			resp, err := c.Get(ts.URL + LoginPath + "/" + challenge)
+			resp, err := c.Get(ts.URL + LoginPath + "?challenge=" + challenge)
 			require.NoError(t, err)
 			require.EqualValues(t, tc.status, resp.StatusCode)
 		})
@@ -147,27 +179,27 @@ func TestGetConsentRequest(t *testing.T) {
 		t.Run(fmt.Sprintf("case=%d", k), func(t *testing.T) {
 			key := fmt.Sprint(k)
 			challenge := "challenge" + key
-			m := NewMemoryManager(nil)
+
+			conf := internal.NewConfigurationWithDefaults()
+			reg := internal.NewRegistry(conf)
+
 			if tc.exists {
-				require.NoError(t, m.CreateConsentRequest(context.TODO(), &ConsentRequest{
+				require.NoError(t, reg.ConsentManager().CreateConsentRequest(context.TODO(), &ConsentRequest{
 					Client:     &client.Client{ClientID: "client" + key},
 					Challenge:  challenge,
 					WasHandled: tc.handled,
 				}))
 			}
-			r := httprouter.New()
-			h := NewHandler(
-				herodot.NewJSONWriter(nil),
-				m,
-				nil,
-				"https://www.ory.sh",
-			)
-			h.SetRoutes(r, r)
+
+			h := NewHandler(reg, conf)
+
+			r := x.NewRouterAdmin()
+			h.SetRoutes(r)
 			ts := httptest.NewServer(r)
 			defer ts.Close()
 
 			c := &http.Client{}
-			resp, err := c.Get(ts.URL + ConsentPath + "/" + challenge)
+			resp, err := c.Get(ts.URL + ConsentPath + "?challenge=" + challenge)
 			require.NoError(t, err)
 			require.EqualValues(t, tc.status, resp.StatusCode)
 		})

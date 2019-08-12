@@ -8,22 +8,42 @@ before finalizing the upgrade process.
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 
 
+- [Hassle-free upgrades](#hassle-free-upgrades)
+- [1.0.0-rc.10](#100-rc10)
+  - [OpenID Connect Front-/Backchannel Logout 1.0](#openid-connect-front-backchannel-logout-10)
+  - [Schema Changes](#schema-changes)
+  - [SQL Migrations now require user-input or `--yes` flag](#sql-migrations-now-require-user-input-or---yes-flag)
+  - [Login and Consent Management](#login-and-consent-management)
+- [1.0.0-rc.9](#100-rc9)
+  - [Go SDK](#go-sdk)
+  - [Accepting Login and Consent Requests](#accepting-login-and-consent-requests)
+- [1.0.0-rc.7](#100-rc7)
+  - [Configuration changes](#configuration-changes)
+  - [System secret rotation](#system-secret-rotation)
+  - [Database Plugins](#database-plugins)
 - [1.0.0-rc.4](#100-rc4)
 - [1.0.0-rc.1](#100-rc1)
+  - [Schema Changes](#schema-changes-1)
+    - [Foreign Keys](#foreign-keys)
+      - [Removing inconsistent oauth2 data](#removing-inconsistent-oauth2-data)
+      - [Removing inconsistent login & consent data](#removing-inconsistent-login--consent-data)
+    - [Indices](#indices)
   - [Non-breaking Changes](#non-breaking-changes)
     - [Access Token Audience](#access-token-audience)
     - [Refresh Grant](#refresh-grant)
     - [Customise login and consent flow timeout](#customise-login-and-consent-flow-timeout)
-    - [Schema Changes](#schema-changes)
   - [Breaking Changes](#breaking-changes)
     - [Refresh Token Expiry](#refresh-token-expiry)
+    - [Swagger & SDK Restructuring](#swagger--sdk-restructuring)
+      - [Go](#go)
+      - [Others](#others)
     - [JSON Web Token formatted Access Token data](#json-web-token-formatted-access-token-data)
     - [CLI Changes](#cli-changes)
     - [API Changes](#api-changes)
 - [1.0.0-beta.9](#100-beta9)
   - [CORS is disabled by default](#cors-is-disabled-by-default)
 - [1.0.0-beta.8](#100-beta8)
-  - [Schema Changes](#schema-changes-1)
+  - [Schema Changes](#schema-changes-2)
   - [Split of Public and Administrative Endpoints](#split-of-public-and-administrative-endpoints)
   - [Golang SDK `Configuration.EndpointURL` is now `Configuration.AdminURL`](#golang-sdk-configurationendpointurl-is-now-configurationadminurl)
   - [`hydra serve` is now `hydra serve all`](#hydra-serve-is-now-hydra-serve-all)
@@ -34,7 +54,7 @@ before finalizing the upgrade process.
   - [Regenerated OpenID Connect ID Token cryptographic keys](#regenerated-openid-connect-id-token-cryptographic-keys)
 - [1.0.0-beta.5](#100-beta5)
   - [OAuth 2.0 Client Response Type changes](#oauth-20-client-response-type-changes)
-  - [Schema Changes](#schema-changes-2)
+  - [Schema Changes](#schema-changes-3)
   - [HTTP Error Payload](#http-error-payload)
   - [OAuth 2.0 Clients must specify correct `token_endpoint_auth_method`](#oauth-20-clients-must-specify-correct-token_endpoint_auth_method)
   - [OAuth 2.0 Client field `id` is now `client_id`](#oauth-20-client-field-id-is-now-client_id)
@@ -77,7 +97,7 @@ before finalizing the upgrade process.
     - [New consent flow](#new-consent-flow)
     - [Audience](#audience)
     - [Response payload changes to `/warden/token/allowed`](#response-payload-changes-to-wardentokenallowed)
-    - [Go SDK](#go-sdk)
+    - [Go SDK](#go-sdk-1)
     - [Health endpoints](#health-endpoints)
     - [Group endpoints](#group-endpoints)
     - [Replacing hierarchical scope strategy with wildcard scope strategy](#replacing-hierarchical-scope-strategy-with-wildcard-scope-strategy)
@@ -118,6 +138,123 @@ before finalizing the upgrade process.
 Do you want the latest features and patches without work and hassle? Are you looking for a reliable, scalable, and
 secure deployment with zero effort? We can run it for you! If you're interested,
 [contact us now](mailto:hi@ory.sh)!
+
+## 1.0.0-rc.10
+
+### OpenID Connect Front-/Backchannel Logout 1.0
+
+This patch implements OpenID Connect Front-/Backchannel Logout 1.0 ([read docs](https://www.ory.sh/docs/hydra/oauth2#logout)).
+Therefore, endpoint `/oauth2/auth/sessions/login/revoke` has been deprecated.
+
+### Schema Changes
+
+Please read all paragraphs of this section with the utmost care, before executing `hydra migrate sql`. Do
+not take this change lightly and create a backup of the database before you begin. To be sure, copy the database
+and do a dry-run locally.
+
+> Be aware that running these migrations might take some time when using large databases. Do a dry-run before hammering
+your production database.
+
+### SQL Migrations now require user-input or `--yes` flag
+
+`hydra migrate sql` now shows an execution plan and asks for confirmation before executing the migrations. To run
+migrations without user interaction, add flag `--yes`.
+
+### Login and Consent Management
+
+Orthogonal to the changes when accepting and rejection consent and login requests, the following endpoints
+have been updated as well:
+
+* `DELETE /oauth2/auth/sessions/login/:subject` -> `DELETE /oauth2/auth/sessions/login?subject={subject}`
+* `GET /oauth2/auth/sessions/consent/:subject` -> `GET /oauth2/auth/sessions/login?subject={subject}`
+* `DELETE /oauth2/auth/sessions/consent/:subject` -> `DELETE /oauth2/auth/sessions/login?subject={subject}`
+* `DELETE /oauth2/auth/sessions/consent/:subject/:client` -> `DELETE /oauth2/auth/sessions/login?subject={subject}&client={client}`
+
+While this does not include a security warning, this patch allows developers to use slashes in dots in their subject/user
+IDs.
+
+## 1.0.0-rc.9
+
+### Go SDK
+
+The Go SDK is now being generated using `go-swagger`. The SDK generated using `swagger-codegen` is no longer supported.
+The old Go SDK is still available but moved to a new path. To use it, change:
+
+```
+- import "github.com/ory/hydra/sdk/go/hydra"
+- import "github.com/ory/hydra/sdk/go/hydra/swagger"
+
++ import hydra "github.com/ory/hydra-legacy-sdk"
++ import "github.com/ory/hydra-legacy-sdk/swagger"
+```
+
+### Accepting Login and Consent Requests
+
+Previously, login and consent requests were accepted/rejected by doing one of:
+
+```
+GET /oauth2/auth/requests/login/{challenge}
+PUT /oauth2/auth/requests/login/{challenge}/accept
+PUT /oauth2/auth/requests/login/{challenge}/reject
+
+GET /oauth2/auth/requests/consent/{challenge}
+PUT /oauth2/auth/requests/consent/{challenge}/accept
+PUT /oauth2/auth/requests/consent/{challenge}/reject
+```
+
+We observed login/consent apps that did not properly sanitize the `{challenge}` parameter, making it possible to
+escape the path by using `..` in the challenge parameter (e.g. `http://my-login-app/login?challenge=../../whatever`)
+causing the login/consent app to execute a request it is not supposed to be making (e.g. `/oauth2/auth/requests/login/../../whatever/accept`).
+
+From now on, the challenge has to be sent using a query parameter instead:
+
+```
+GET /oauth2/auth/requests/login?challenge={challenge}
+PUT /oauth2/auth/requests/login/accept?challenge={challenge}
+PUT /oauth2/auth/requests/login/reject?challenge={challenge}
+
+GET /oauth2/auth/requests/consent?challenge={challenge}
+PUT /oauth2/auth/requests/consent/accept?challenge={challenge}
+PUT /oauth2/auth/requests/consent/reject?challenge={challenge}
+```
+
+Implementers will still need to make sure that `challenge` is properly (query) scaped, but it's generally easier to secure than
+a path parameter.
+
+We've decided to make this a hard breaking change in order to force everybody to check if their application is vulnerable to this
+issue and to upgrade their code. The required code change is minimal but the resulting security improvements are potentially
+large.
+
+## 1.0.0-rc.7
+
+### Configuration changes
+
+This patch introduces changes to the way configuration works in ORY Hydra. It allows ORY Hydra to be configured from
+a variety of sources including environment variables and a configuration file. In the future, ORY Hydra might be configurable
+using etcd or consul. The changes allow ORY Hydra to reload configuration without restarting in the future.
+
+An overview of configuration settings can be found [here](https://github.com/ory/hydra/blob/master/docs/config.yaml).
+
+All changes are backwards compatible except for the way key rotation works (see next section) and the way DBAL plugins
+are loaded (see section after next).
+
+### System secret rotation
+
+Rotating system secrets was fairly cumbersome in the past and required a restart of ORY Hydra. This changed. The
+system secret is now an array where the first element is used for encryption and all elements can be used for decryption.
+
+For more information on this topic, click [here](https://www.ory.sh/docs/hydra/advanced#rotation-of-hmac-token-signing-and-database-and-cookie-encryption-keys).
+
+To make this change work, environment variable `ROTATED_SYSTEM_SECRET` has been removed and can no longer be used. Command
+`hydra migrate secret` has also been removed without replacement as it is no longer required for rotating secrets.
+
+### Database Plugins
+
+Environment variable `DATABASE_PLUGIN` has been replaced by `dsn`. To load a plugin,
+set `dsn: plugin:///path/to/plugin.so`.
+
+Please note that internals have changed radically with this patch and that there is some refactoring effort required
+to make plugins work with the most recent version.
 
 ## 1.0.0-rc.4
 

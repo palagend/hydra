@@ -59,6 +59,11 @@
 
 
 
+
+
+
+
+
     _this['id_token_signing_alg_values_supported'] = idTokenSigningAlgValuesSupported;
     _this['issuer'] = issuer;
     _this['jwks_uri'] = jwksUri;
@@ -68,6 +73,7 @@
 
 
     _this['response_types_supported'] = responseTypesSupported;
+
 
     _this['subject_types_supported'] = subjectTypesSupported;
     _this['token_endpoint'] = tokenEndpoint;
@@ -90,11 +96,26 @@
       if (data.hasOwnProperty('authorization_endpoint')) {
         obj['authorization_endpoint'] = ApiClient.convertToType(data['authorization_endpoint'], 'String');
       }
+      if (data.hasOwnProperty('backchannel_logout_session_supported')) {
+        obj['backchannel_logout_session_supported'] = ApiClient.convertToType(data['backchannel_logout_session_supported'], 'Boolean');
+      }
+      if (data.hasOwnProperty('backchannel_logout_supported')) {
+        obj['backchannel_logout_supported'] = ApiClient.convertToType(data['backchannel_logout_supported'], 'Boolean');
+      }
       if (data.hasOwnProperty('claims_parameter_supported')) {
         obj['claims_parameter_supported'] = ApiClient.convertToType(data['claims_parameter_supported'], 'Boolean');
       }
       if (data.hasOwnProperty('claims_supported')) {
         obj['claims_supported'] = ApiClient.convertToType(data['claims_supported'], ['String']);
+      }
+      if (data.hasOwnProperty('end_session_endpoint')) {
+        obj['end_session_endpoint'] = ApiClient.convertToType(data['end_session_endpoint'], 'String');
+      }
+      if (data.hasOwnProperty('frontchannel_logout_session_supported')) {
+        obj['frontchannel_logout_session_supported'] = ApiClient.convertToType(data['frontchannel_logout_session_supported'], 'Boolean');
+      }
+      if (data.hasOwnProperty('frontchannel_logout_supported')) {
+        obj['frontchannel_logout_supported'] = ApiClient.convertToType(data['frontchannel_logout_supported'], 'Boolean');
       }
       if (data.hasOwnProperty('grant_types_supported')) {
         obj['grant_types_supported'] = ApiClient.convertToType(data['grant_types_supported'], ['String']);
@@ -126,6 +147,9 @@
       if (data.hasOwnProperty('response_types_supported')) {
         obj['response_types_supported'] = ApiClient.convertToType(data['response_types_supported'], ['String']);
       }
+      if (data.hasOwnProperty('revocation_endpoint')) {
+        obj['revocation_endpoint'] = ApiClient.convertToType(data['revocation_endpoint'], 'String');
+      }
       if (data.hasOwnProperty('scopes_supported')) {
         obj['scopes_supported'] = ApiClient.convertToType(data['scopes_supported'], ['String']);
       }
@@ -154,6 +178,16 @@
    */
   exports.prototype['authorization_endpoint'] = undefined;
   /**
+   * Boolean value specifying whether the OP can pass a sid (session ID) Claim in the Logout Token to identify the RP session with the OP. If supported, the sid Claim is also included in ID Tokens issued by the OP
+   * @member {Boolean} backchannel_logout_session_supported
+   */
+  exports.prototype['backchannel_logout_session_supported'] = undefined;
+  /**
+   * Boolean value specifying whether the OP supports back-channel logout, with true indicating support.
+   * @member {Boolean} backchannel_logout_supported
+   */
+  exports.prototype['backchannel_logout_supported'] = undefined;
+  /**
    * Boolean value specifying whether the OP supports use of the claims parameter, with true indicating support.
    * @member {Boolean} claims_parameter_supported
    */
@@ -163,6 +197,21 @@
    * @member {Array.<String>} claims_supported
    */
   exports.prototype['claims_supported'] = undefined;
+  /**
+   * URL at the OP to which an RP can perform a redirect to request that the End-User be logged out at the OP.
+   * @member {String} end_session_endpoint
+   */
+  exports.prototype['end_session_endpoint'] = undefined;
+  /**
+   * Boolean value specifying whether the OP can pass iss (issuer) and sid (session ID) query parameters to identify the RP session with the OP when the frontchannel_logout_uri is used. If supported, the sid Claim is also included in ID Tokens issued by the OP.
+   * @member {Boolean} frontchannel_logout_session_supported
+   */
+  exports.prototype['frontchannel_logout_session_supported'] = undefined;
+  /**
+   * Boolean value specifying whether the OP supports HTTP-based logout, with true indicating support.
+   * @member {Boolean} frontchannel_logout_supported
+   */
+  exports.prototype['frontchannel_logout_supported'] = undefined;
   /**
    * JSON array containing a list of the OAuth 2.0 Grant Type values that this OP supports.
    * @member {Array.<String>} grant_types_supported
@@ -213,6 +262,11 @@
    * @member {Array.<String>} response_types_supported
    */
   exports.prototype['response_types_supported'] = undefined;
+  /**
+   * URL of the authorization server's OAuth 2.0 revocation endpoint.
+   * @member {String} revocation_endpoint
+   */
+  exports.prototype['revocation_endpoint'] = undefined;
   /**
    * SON array containing a list of the OAuth 2.0 [RFC6749] scope values that this server supports. The server MUST support the openid scope value. Servers MAY choose not to advertise some supported scope values even when this parameter is used
    * @member {Array.<String>} scopes_supported

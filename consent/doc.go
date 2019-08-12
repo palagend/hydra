@@ -20,76 +20,113 @@
 
 package consent
 
-// swagger:parameters getLoginRequest getConsentRequest
-type swaggerGetRequestByChallenge struct {
-	// in: path
+// swagger:parameters getLoginRequest
+type swaggerGetLoginRequestByChallenge struct {
+	// in: query
 	// required: true
-	Challenge string `json:"challenge"`
+	Challenge string `json:"login_challenge"`
 }
 
-// swagger:parameters revokeAllUserConsentSessions
-type swaggerRevokeAllUserConsentSessionsPayload struct {
-	// in: path
+// swagger:parameters getConsentRequest
+type swaggerGetConsentRequestByChallenge struct {
+	// in: query
 	// required: true
-	User string `json:"user"`
+	Challenge string `json:"consent_challenge"`
 }
 
-// swagger:parameters revokeUserClientConsentSessions
-type swaggerRevokeUserClientConsentSessionsPayload struct {
-	// in: path
+// swagger:parameters getLogoutRequest
+type swaggerGetLogoutRequestByChallenge struct {
+	// in: query
 	// required: true
-	User string `json:"user"`
+	Challenge string `json:"logout_challenge"`
+}
 
-	// in: path
+// swagger:parameters revokeConsentSessions
+type swaggerRevokeConsentSessions struct {
+	// The subject (Subject) who's consent sessions should be deleted.
+	//
+	// in: query
 	// required: true
+	Subject string `json:"subject"`
+
+	// If set, deletes only those consent sessions by the Subject that have been granted to the specified OAuth 2.0 Client ID
+	//
+	// in: query
 	Client string `json:"client"`
 }
 
-// swagger:parameters listUserConsentSessions
-type swaggerListUserConsentSessionsPayload struct {
-	// in: path
+// swagger:parameters listSubjectConsentSessions
+type swaggerListSubjectConsentSessionsPayload struct {
+	// in: query
 	// required: true
-	User string `json:"user"`
+	Subject string `json:"subject"`
 }
 
 // swagger:parameters revokeAuthenticationSession
 type swaggerRevokeAuthenticationSessionPayload struct {
-	// in: path
+	// in: query
 	// required: true
-	User string `json:"user"`
+	Subject string `json:"subject"`
 }
 
 // swagger:parameters acceptLoginRequest
-type swaggerAcceptAuthenticationRequest struct {
-	// in: path
+type swaggerAcceptLoginRequest struct {
+	// in: query
 	// required: true
-	Challenge string `json:"challenge"`
+	Challenge string `json:"login_challenge"`
 
 	// in: body
-	Body HandledAuthenticationRequest
+	Body HandledLoginRequest
 }
 
 // swagger:parameters acceptConsentRequest
 type swaggerAcceptConsentRequest struct {
-	// in: path
+	// in: query
 	// required: true
-	Challenge string `json:"challenge"`
+	Challenge string `json:"consent_challenge"`
 
 	// in: body
 	Body HandledConsentRequest
 }
 
-// swagger:parameters rejectLoginRequest rejectConsentRequest
-type swaggerRejectRequest struct {
-	// in: path
+// swagger:parameters acceptLogoutRequest
+type swaggerAcceptLogoutRequest struct {
+	// in: query
 	// required: true
-	Challenge string `json:"challenge"`
+	Challenge string `json:"logout_challenge"`
+}
+
+// swagger:parameters rejectConsentRequest
+type swaggerRejectConsentRequest struct {
+	// in: query
+	// required: true
+	Challenge string `json:"consent_challenge"`
 
 	// in: body
 	Body RequestDeniedError
 }
 
-// A list of handled consent requests.
+// swagger:parameters rejectLoginRequest
+type swaggerRejectLoginRequest struct {
+	// in: query
+	// required: true
+	Challenge string `json:"login_challenge"`
+
+	// in: body
+	Body RequestDeniedError
+}
+
+// swagger:parameters rejectLogoutRequest
+type swaggerRejectLogoutRequest struct {
+	// in: query
+	// required: true
+	Challenge string `json:"logout_challenge"`
+
+	// in: body
+	Body RequestDeniedError
+}
+
+// A list of used consent requests.
 // swagger:response handledConsentRequestList
 type swaggerListHandledConsentRequestsResult struct {
 	// in: body

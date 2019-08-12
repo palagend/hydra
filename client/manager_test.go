@@ -31,17 +31,13 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ory/fosite"
 	. "github.com/ory/hydra/client"
+	"github.com/ory/hydra/internal"
 	"github.com/ory/x/sqlcon/dockertest"
 )
 
 var clientManagers = map[string]Manager{}
 var m sync.Mutex
-
-func init() {
-	clientManagers["memory"] = NewMemoryManager(&fosite.BCrypt{})
-}
 
 func TestMain(m *testing.M) {
 	flag.Parse()
@@ -55,9 +51,11 @@ func connectToMySQL() {
 		log.Fatalf("Could not connect to database: %v", err)
 	}
 
-	s := &SQLManager{DB: db, Hasher: &fosite.BCrypt{WorkFactor: 4}}
+	conf := internal.NewConfigurationWithDefaults()
+	reg := internal.NewRegistrySQL(conf, db)
+
 	m.Lock()
-	clientManagers["mysql"] = s
+	clientManagers["mysql"] = reg.ClientManager()
 	m.Unlock()
 }
 
@@ -67,25 +65,53 @@ func connectToPG() {
 		log.Fatalf("Could not connect to database: %v", err)
 	}
 
-	s := &SQLManager{DB: db, Hasher: &fosite.BCrypt{WorkFactor: 4}}
+	conf := internal.NewConfigurationWithDefaults()
+	reg := internal.NewRegistrySQL(conf, db)
+
 	m.Lock()
-	clientManagers["postgres"] = s
+	clientManagers["postgres"] = reg.ClientManager()
+	m.Unlock()
+}
+
+func connectToCRDB() {
+	db, err := dockertest.ConnectToTestCockroachDB()
+	if err != nil {
+		log.Fatalf("Could not connect to database: %v", err)
+	}
+
+	conf := internal.NewConfigurationWithDefaults()
+	reg := internal.NewRegistrySQL(conf, db)
+
+	m.Lock()
+	clientManagers["cockroach"] = reg.ClientManager()
 	m.Unlock()
 }
 
 func TestManagers(t *testing.T) {
+	conf := internal.NewConfigurationWithDefaults()
+	reg := internal.NewRegistry(conf)
+
+	clientManagers["memory"] = reg.ClientManager()
+
 	if !testing.Short() {
 		dockertest.Parallel([]func(){
 			connectToPG,
 			connectToMySQL,
+			connectToCRDB,
 		})
 	}
 
+	t.Log("Creating schemas...")
 	for k, m := range clientManagers {
 		s, ok := m.(*SQLManager)
 		if ok {
 			CleanTestDB(t, s.DB)
-			_, err := s.CreateSchemas()
+			x, err := s.CreateSchemas(k)
+			if err != nil {
+				t.Fatal("Could not create schemas", err.Error())
+			} else {
+				t.Logf("Schemas created. Rows affected: %+v", x)
+			}
 			require.NoError(t, err)
 		}
 

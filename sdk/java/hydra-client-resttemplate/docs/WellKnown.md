@@ -5,8 +5,13 @@
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
 **authorizationEndpoint** | **String** | URL of the OP&#39;s OAuth 2.0 Authorization Endpoint. | 
+**backchannelLogoutSessionSupported** | **Boolean** | Boolean value specifying whether the OP can pass a sid (session ID) Claim in the Logout Token to identify the RP session with the OP. If supported, the sid Claim is also included in ID Tokens issued by the OP |  [optional]
+**backchannelLogoutSupported** | **Boolean** | Boolean value specifying whether the OP supports back-channel logout, with true indicating support. |  [optional]
 **claimsParameterSupported** | **Boolean** | Boolean value specifying whether the OP supports use of the claims parameter, with true indicating support. |  [optional]
 **claimsSupported** | **List&lt;String&gt;** | JSON array containing a list of the Claim Names of the Claims that the OpenID Provider MAY be able to supply values for. Note that for privacy or other reasons, this might not be an exhaustive list. |  [optional]
+**endSessionEndpoint** | **String** | URL at the OP to which an RP can perform a redirect to request that the End-User be logged out at the OP. |  [optional]
+**frontchannelLogoutSessionSupported** | **Boolean** | Boolean value specifying whether the OP can pass iss (issuer) and sid (session ID) query parameters to identify the RP session with the OP when the frontchannel_logout_uri is used. If supported, the sid Claim is also included in ID Tokens issued by the OP. |  [optional]
+**frontchannelLogoutSupported** | **Boolean** | Boolean value specifying whether the OP supports HTTP-based logout, with true indicating support. |  [optional]
 **grantTypesSupported** | **List&lt;String&gt;** | JSON array containing a list of the OAuth 2.0 Grant Type values that this OP supports. |  [optional]
 **idTokenSigningAlgValuesSupported** | **List&lt;String&gt;** | JSON array containing a list of the JWS signing algorithms (alg values) supported by the OP for the ID Token to encode the Claims in a JWT. | 
 **issuer** | **String** | URL using the https scheme with no query or fragment component that the OP asserts as its IssuerURL Identifier. If IssuerURL discovery is supported , this value MUST be identical to the issuer value returned by WebFinger. This also MUST be identical to the iss Claim value in ID Tokens issued from this IssuerURL. | 
@@ -17,6 +22,7 @@ Name | Type | Description | Notes
 **requireRequestUriRegistration** | **Boolean** | Boolean value specifying whether the OP requires any request_uri values used to be pre-registered using the request_uris registration parameter. |  [optional]
 **responseModesSupported** | **List&lt;String&gt;** | JSON array containing a list of the OAuth 2.0 response_mode values that this OP supports. |  [optional]
 **responseTypesSupported** | **List&lt;String&gt;** | JSON array containing a list of the OAuth 2.0 response_type values that this OP supports. Dynamic OpenID Providers MUST support the code, id_token, and the token id_token Response Type values. | 
+**revocationEndpoint** | **String** | URL of the authorization server&#39;s OAuth 2.0 revocation endpoint. |  [optional]
 **scopesSupported** | **List&lt;String&gt;** | SON array containing a list of the OAuth 2.0 [RFC6749] scope values that this server supports. The server MUST support the openid scope value. Servers MAY choose not to advertise some supported scope values even when this parameter is used |  [optional]
 **subjectTypesSupported** | **List&lt;String&gt;** | JSON array containing a list of the Subject Identifier types that this OP supports. Valid types include pairwise and public. | 
 **tokenEndpoint** | **String** | URL of the OP&#39;s OAuth 2.0 Token Endpoint | 

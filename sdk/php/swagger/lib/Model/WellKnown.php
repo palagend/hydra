@@ -56,8 +56,13 @@ class WellKnown implements ArrayAccess
       */
     protected static $swaggerTypes = [
         'authorization_endpoint' => 'string',
+        'backchannel_logout_session_supported' => 'bool',
+        'backchannel_logout_supported' => 'bool',
         'claims_parameter_supported' => 'bool',
         'claims_supported' => 'string[]',
+        'end_session_endpoint' => 'string',
+        'frontchannel_logout_session_supported' => 'bool',
+        'frontchannel_logout_supported' => 'bool',
         'grant_types_supported' => 'string[]',
         'id_token_signing_alg_values_supported' => 'string[]',
         'issuer' => 'string',
@@ -68,6 +73,7 @@ class WellKnown implements ArrayAccess
         'require_request_uri_registration' => 'bool',
         'response_modes_supported' => 'string[]',
         'response_types_supported' => 'string[]',
+        'revocation_endpoint' => 'string',
         'scopes_supported' => 'string[]',
         'subject_types_supported' => 'string[]',
         'token_endpoint' => 'string',
@@ -82,8 +88,13 @@ class WellKnown implements ArrayAccess
       */
     protected static $swaggerFormats = [
         'authorization_endpoint' => null,
+        'backchannel_logout_session_supported' => null,
+        'backchannel_logout_supported' => null,
         'claims_parameter_supported' => null,
         'claims_supported' => null,
+        'end_session_endpoint' => null,
+        'frontchannel_logout_session_supported' => null,
+        'frontchannel_logout_supported' => null,
         'grant_types_supported' => null,
         'id_token_signing_alg_values_supported' => null,
         'issuer' => null,
@@ -94,6 +105,7 @@ class WellKnown implements ArrayAccess
         'require_request_uri_registration' => null,
         'response_modes_supported' => null,
         'response_types_supported' => null,
+        'revocation_endpoint' => null,
         'scopes_supported' => null,
         'subject_types_supported' => null,
         'token_endpoint' => null,
@@ -118,8 +130,13 @@ class WellKnown implements ArrayAccess
      */
     protected static $attributeMap = [
         'authorization_endpoint' => 'authorization_endpoint',
+        'backchannel_logout_session_supported' => 'backchannel_logout_session_supported',
+        'backchannel_logout_supported' => 'backchannel_logout_supported',
         'claims_parameter_supported' => 'claims_parameter_supported',
         'claims_supported' => 'claims_supported',
+        'end_session_endpoint' => 'end_session_endpoint',
+        'frontchannel_logout_session_supported' => 'frontchannel_logout_session_supported',
+        'frontchannel_logout_supported' => 'frontchannel_logout_supported',
         'grant_types_supported' => 'grant_types_supported',
         'id_token_signing_alg_values_supported' => 'id_token_signing_alg_values_supported',
         'issuer' => 'issuer',
@@ -130,6 +147,7 @@ class WellKnown implements ArrayAccess
         'require_request_uri_registration' => 'require_request_uri_registration',
         'response_modes_supported' => 'response_modes_supported',
         'response_types_supported' => 'response_types_supported',
+        'revocation_endpoint' => 'revocation_endpoint',
         'scopes_supported' => 'scopes_supported',
         'subject_types_supported' => 'subject_types_supported',
         'token_endpoint' => 'token_endpoint',
@@ -145,8 +163,13 @@ class WellKnown implements ArrayAccess
      */
     protected static $setters = [
         'authorization_endpoint' => 'setAuthorizationEndpoint',
+        'backchannel_logout_session_supported' => 'setBackchannelLogoutSessionSupported',
+        'backchannel_logout_supported' => 'setBackchannelLogoutSupported',
         'claims_parameter_supported' => 'setClaimsParameterSupported',
         'claims_supported' => 'setClaimsSupported',
+        'end_session_endpoint' => 'setEndSessionEndpoint',
+        'frontchannel_logout_session_supported' => 'setFrontchannelLogoutSessionSupported',
+        'frontchannel_logout_supported' => 'setFrontchannelLogoutSupported',
         'grant_types_supported' => 'setGrantTypesSupported',
         'id_token_signing_alg_values_supported' => 'setIdTokenSigningAlgValuesSupported',
         'issuer' => 'setIssuer',
@@ -157,6 +180,7 @@ class WellKnown implements ArrayAccess
         'require_request_uri_registration' => 'setRequireRequestUriRegistration',
         'response_modes_supported' => 'setResponseModesSupported',
         'response_types_supported' => 'setResponseTypesSupported',
+        'revocation_endpoint' => 'setRevocationEndpoint',
         'scopes_supported' => 'setScopesSupported',
         'subject_types_supported' => 'setSubjectTypesSupported',
         'token_endpoint' => 'setTokenEndpoint',
@@ -172,8 +196,13 @@ class WellKnown implements ArrayAccess
      */
     protected static $getters = [
         'authorization_endpoint' => 'getAuthorizationEndpoint',
+        'backchannel_logout_session_supported' => 'getBackchannelLogoutSessionSupported',
+        'backchannel_logout_supported' => 'getBackchannelLogoutSupported',
         'claims_parameter_supported' => 'getClaimsParameterSupported',
         'claims_supported' => 'getClaimsSupported',
+        'end_session_endpoint' => 'getEndSessionEndpoint',
+        'frontchannel_logout_session_supported' => 'getFrontchannelLogoutSessionSupported',
+        'frontchannel_logout_supported' => 'getFrontchannelLogoutSupported',
         'grant_types_supported' => 'getGrantTypesSupported',
         'id_token_signing_alg_values_supported' => 'getIdTokenSigningAlgValuesSupported',
         'issuer' => 'getIssuer',
@@ -184,6 +213,7 @@ class WellKnown implements ArrayAccess
         'require_request_uri_registration' => 'getRequireRequestUriRegistration',
         'response_modes_supported' => 'getResponseModesSupported',
         'response_types_supported' => 'getResponseTypesSupported',
+        'revocation_endpoint' => 'getRevocationEndpoint',
         'scopes_supported' => 'getScopesSupported',
         'subject_types_supported' => 'getSubjectTypesSupported',
         'token_endpoint' => 'getTokenEndpoint',
@@ -224,8 +254,13 @@ class WellKnown implements ArrayAccess
     public function __construct(array $data = null)
     {
         $this->container['authorization_endpoint'] = isset($data['authorization_endpoint']) ? $data['authorization_endpoint'] : null;
+        $this->container['backchannel_logout_session_supported'] = isset($data['backchannel_logout_session_supported']) ? $data['backchannel_logout_session_supported'] : null;
+        $this->container['backchannel_logout_supported'] = isset($data['backchannel_logout_supported']) ? $data['backchannel_logout_supported'] : null;
         $this->container['claims_parameter_supported'] = isset($data['claims_parameter_supported']) ? $data['claims_parameter_supported'] : null;
         $this->container['claims_supported'] = isset($data['claims_supported']) ? $data['claims_supported'] : null;
+        $this->container['end_session_endpoint'] = isset($data['end_session_endpoint']) ? $data['end_session_endpoint'] : null;
+        $this->container['frontchannel_logout_session_supported'] = isset($data['frontchannel_logout_session_supported']) ? $data['frontchannel_logout_session_supported'] : null;
+        $this->container['frontchannel_logout_supported'] = isset($data['frontchannel_logout_supported']) ? $data['frontchannel_logout_supported'] : null;
         $this->container['grant_types_supported'] = isset($data['grant_types_supported']) ? $data['grant_types_supported'] : null;
         $this->container['id_token_signing_alg_values_supported'] = isset($data['id_token_signing_alg_values_supported']) ? $data['id_token_signing_alg_values_supported'] : null;
         $this->container['issuer'] = isset($data['issuer']) ? $data['issuer'] : null;
@@ -236,6 +271,7 @@ class WellKnown implements ArrayAccess
         $this->container['require_request_uri_registration'] = isset($data['require_request_uri_registration']) ? $data['require_request_uri_registration'] : null;
         $this->container['response_modes_supported'] = isset($data['response_modes_supported']) ? $data['response_modes_supported'] : null;
         $this->container['response_types_supported'] = isset($data['response_types_supported']) ? $data['response_types_supported'] : null;
+        $this->container['revocation_endpoint'] = isset($data['revocation_endpoint']) ? $data['revocation_endpoint'] : null;
         $this->container['scopes_supported'] = isset($data['scopes_supported']) ? $data['scopes_supported'] : null;
         $this->container['subject_types_supported'] = isset($data['subject_types_supported']) ? $data['subject_types_supported'] : null;
         $this->container['token_endpoint'] = isset($data['token_endpoint']) ? $data['token_endpoint'] : null;
@@ -333,6 +369,48 @@ class WellKnown implements ArrayAccess
     }
 
     /**
+     * Gets backchannel_logout_session_supported
+     * @return bool
+     */
+    public function getBackchannelLogoutSessionSupported()
+    {
+        return $this->container['backchannel_logout_session_supported'];
+    }
+
+    /**
+     * Sets backchannel_logout_session_supported
+     * @param bool $backchannel_logout_session_supported Boolean value specifying whether the OP can pass a sid (session ID) Claim in the Logout Token to identify the RP session with the OP. If supported, the sid Claim is also included in ID Tokens issued by the OP
+     * @return $this
+     */
+    public function setBackchannelLogoutSessionSupported($backchannel_logout_session_supported)
+    {
+        $this->container['backchannel_logout_session_supported'] = $backchannel_logout_session_supported;
+
+        return $this;
+    }
+
+    /**
+     * Gets backchannel_logout_supported
+     * @return bool
+     */
+    public function getBackchannelLogoutSupported()
+    {
+        return $this->container['backchannel_logout_supported'];
+    }
+
+    /**
+     * Sets backchannel_logout_supported
+     * @param bool $backchannel_logout_supported Boolean value specifying whether the OP supports back-channel logout, with true indicating support.
+     * @return $this
+     */
+    public function setBackchannelLogoutSupported($backchannel_logout_supported)
+    {
+        $this->container['backchannel_logout_supported'] = $backchannel_logout_supported;
+
+        return $this;
+    }
+
+    /**
      * Gets claims_parameter_supported
      * @return bool
      */
@@ -370,6 +448,69 @@ class WellKnown implements ArrayAccess
     public function setClaimsSupported($claims_supported)
     {
         $this->container['claims_supported'] = $claims_supported;
+
+        return $this;
+    }
+
+    /**
+     * Gets end_session_endpoint
+     * @return string
+     */
+    public function getEndSessionEndpoint()
+    {
+        return $this->container['end_session_endpoint'];
+    }
+
+    /**
+     * Sets end_session_endpoint
+     * @param string $end_session_endpoint URL at the OP to which an RP can perform a redirect to request that the End-User be logged out at the OP.
+     * @return $this
+     */
+    public function setEndSessionEndpoint($end_session_endpoint)
+    {
+        $this->container['end_session_endpoint'] = $end_session_endpoint;
+
+        return $this;
+    }
+
+    /**
+     * Gets frontchannel_logout_session_supported
+     * @return bool
+     */
+    public function getFrontchannelLogoutSessionSupported()
+    {
+        return $this->container['frontchannel_logout_session_supported'];
+    }
+
+    /**
+     * Sets frontchannel_logout_session_supported
+     * @param bool $frontchannel_logout_session_supported Boolean value specifying whether the OP can pass iss (issuer) and sid (session ID) query parameters to identify the RP session with the OP when the frontchannel_logout_uri is used. If supported, the sid Claim is also included in ID Tokens issued by the OP.
+     * @return $this
+     */
+    public function setFrontchannelLogoutSessionSupported($frontchannel_logout_session_supported)
+    {
+        $this->container['frontchannel_logout_session_supported'] = $frontchannel_logout_session_supported;
+
+        return $this;
+    }
+
+    /**
+     * Gets frontchannel_logout_supported
+     * @return bool
+     */
+    public function getFrontchannelLogoutSupported()
+    {
+        return $this->container['frontchannel_logout_supported'];
+    }
+
+    /**
+     * Sets frontchannel_logout_supported
+     * @param bool $frontchannel_logout_supported Boolean value specifying whether the OP supports HTTP-based logout, with true indicating support.
+     * @return $this
+     */
+    public function setFrontchannelLogoutSupported($frontchannel_logout_supported)
+    {
+        $this->container['frontchannel_logout_supported'] = $frontchannel_logout_supported;
 
         return $this;
     }
@@ -580,6 +721,27 @@ class WellKnown implements ArrayAccess
     public function setResponseTypesSupported($response_types_supported)
     {
         $this->container['response_types_supported'] = $response_types_supported;
+
+        return $this;
+    }
+
+    /**
+     * Gets revocation_endpoint
+     * @return string
+     */
+    public function getRevocationEndpoint()
+    {
+        return $this->container['revocation_endpoint'];
+    }
+
+    /**
+     * Sets revocation_endpoint
+     * @param string $revocation_endpoint URL of the authorization server's OAuth 2.0 revocation endpoint.
+     * @return $this
+     */
+    public function setRevocationEndpoint($revocation_endpoint)
+    {
+        $this->container['revocation_endpoint'] = $revocation_endpoint;
 
         return $this;
     }

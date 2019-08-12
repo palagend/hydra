@@ -22,12 +22,14 @@ import com.github.ory.hydra.model.OpenIDConnectContext;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * ConsentRequest
  */
-@javax.annotation.Generated(value = "io.swagger.codegen.languages.JavaClientCodegen", date = "2018-11-18T22:54:40.815+01:00")
+@javax.annotation.Generated(value = "io.swagger.codegen.languages.JavaClientCodegen", date = "2019-07-18T19:30:59.329+02:00")
 public class ConsentRequest {
   @JsonProperty("acr")
   private String acr = null;
@@ -37,6 +39,9 @@ public class ConsentRequest {
 
   @JsonProperty("client")
   private OAuth2Client client = null;
+
+  @JsonProperty("context")
+  private Map<String, Object> context = null;
 
   @JsonProperty("login_challenge")
   private String loginChallenge = null;
@@ -116,6 +121,32 @@ public class ConsentRequest {
     this.client = client;
   }
 
+  public ConsentRequest context(Map<String, Object> context) {
+    this.context = context;
+    return this;
+  }
+
+  public ConsentRequest putContextItem(String key, Object contextItem) {
+    if (this.context == null) {
+      this.context = new HashMap<String, Object>();
+    }
+    this.context.put(key, contextItem);
+    return this;
+  }
+
+   /**
+   * Context contains arbitrary information set by the login endpoint or is empty if not set.
+   * @return context
+  **/
+  @ApiModelProperty(value = "Context contains arbitrary information set by the login endpoint or is empty if not set.")
+  public Map<String, Object> getContext() {
+    return context;
+  }
+
+  public void setContext(Map<String, Object> context) {
+    this.context = context;
+  }
+
   public ConsentRequest loginChallenge(String loginChallenge) {
     this.loginChallenge = loginChallenge;
     return this;
@@ -140,10 +171,10 @@ public class ConsentRequest {
   }
 
    /**
-   * LoginSessionID is the authentication session ID. It is set if the browser had a valid authentication session at ORY Hydra during the login flow. It can be used to associate consecutive login requests by a certain user.
+   * LoginSessionID is the login session ID. If the user-agent reuses a login session (via cookie / remember flag) this ID will remain the same. If the user-agent did not have an existing authentication session (e.g. remember is false) this will be a new random value. This value is used as the \&quot;sid\&quot; parameter in the ID Token and in OIDC Front-/Back- channel logout. It&#39;s value can generally be used to associate consecutive login requests by a certain user.
    * @return loginSessionId
   **/
-  @ApiModelProperty(value = "LoginSessionID is the authentication session ID. It is set if the browser had a valid authentication session at ORY Hydra during the login flow. It can be used to associate consecutive login requests by a certain user.")
+  @ApiModelProperty(value = "LoginSessionID is the login session ID. If the user-agent reuses a login session (via cookie / remember flag) this ID will remain the same. If the user-agent did not have an existing authentication session (e.g. remember is false) this will be a new random value. This value is used as the \"sid\" parameter in the ID Token and in OIDC Front-/Back- channel logout. It's value can generally be used to associate consecutive login requests by a certain user.")
   public String getLoginSessionId() {
     return loginSessionId;
   }
@@ -289,6 +320,7 @@ public class ConsentRequest {
     return Objects.equals(this.acr, consentRequest.acr) &&
         Objects.equals(this.challenge, consentRequest.challenge) &&
         Objects.equals(this.client, consentRequest.client) &&
+        Objects.equals(this.context, consentRequest.context) &&
         Objects.equals(this.loginChallenge, consentRequest.loginChallenge) &&
         Objects.equals(this.loginSessionId, consentRequest.loginSessionId) &&
         Objects.equals(this.oidcContext, consentRequest.oidcContext) &&
@@ -301,7 +333,7 @@ public class ConsentRequest {
 
   @Override
   public int hashCode() {
-    return Objects.hash(acr, challenge, client, loginChallenge, loginSessionId, oidcContext, requestUrl, requestedAccessTokenAudience, requestedScope, skip, subject);
+    return Objects.hash(acr, challenge, client, context, loginChallenge, loginSessionId, oidcContext, requestUrl, requestedAccessTokenAudience, requestedScope, skip, subject);
   }
 
 
@@ -313,6 +345,7 @@ public class ConsentRequest {
     sb.append("    acr: ").append(toIndentedString(acr)).append("\n");
     sb.append("    challenge: ").append(toIndentedString(challenge)).append("\n");
     sb.append("    client: ").append(toIndentedString(client)).append("\n");
+    sb.append("    context: ").append(toIndentedString(context)).append("\n");
     sb.append("    loginChallenge: ").append(toIndentedString(loginChallenge)).append("\n");
     sb.append("    loginSessionId: ").append(toIndentedString(loginSessionId)).append("\n");
     sb.append("    oidcContext: ").append(toIndentedString(oidcContext)).append("\n");

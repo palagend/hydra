@@ -22,42 +22,43 @@ package cli
 
 import (
 	"fmt"
-	"net/http"
 	"strings" //"encoding/json"
 
-	"github.com/ory/hydra/config" //"github.com/ory/hydra/oauth2"
-	hydra "github.com/ory/hydra/sdk/go/hydra/swagger"
+	"github.com/go-openapi/runtime"
+
+	"github.com/ory/hydra/sdk/go/hydra/client/admin"
+	"github.com/ory/x/pointerx"
+
+	"github.com/spf13/cobra"
+
+	httptransport "github.com/go-openapi/runtime/client"
+
 	"github.com/ory/x/cmdx"
 	"github.com/ory/x/flagx" //"context"
-	"github.com/spf13/cobra"
 )
 
-type IntrospectionHandler struct {
-	Config *config.Config
-}
+type IntrospectionHandler struct{}
 
-func newIntrospectionHandler(c *config.Config) *IntrospectionHandler {
-	return &IntrospectionHandler{
-		Config: c,
-	}
+func newIntrospectionHandler() *IntrospectionHandler {
+	return &IntrospectionHandler{}
 }
 
 func (h *IntrospectionHandler) Introspect(cmd *cobra.Command, args []string) {
 	cmdx.ExactArgs(cmd, args, 1)
+	c := configureClient(cmd)
 
-	c := hydra.NewAdminApiWithBasePath(h.Config.GetClusterURLWithoutTailingSlashOrFail(cmd))
-	c.Configuration = configureClient(cmd, c.Configuration)
-
-	clientID := flagx.MustGetString(cmd, "client-id")
-	clientSecret := flagx.MustGetString(cmd, "client-secret")
-	if clientID != "" || clientSecret != "" {
-		c.Configuration.Username = clientID
-		c.Configuration.Password = clientSecret
+	var ht runtime.ClientAuthInfoWriter
+	if clientID, clientSecret := flagx.MustGetString(cmd, "client-id"), flagx.MustGetString(cmd, "client-secret"); clientID != "" || clientSecret != "" {
+		ht = httptransport.BasicAuth(clientID, clientSecret)
 	} else {
 		fmt.Println("No OAuth 2.0 Client ID an secret set, skipping authorization header. This might fail if the introspection endpoint is protected.")
 	}
 
-	result, response, err := c.IntrospectOAuth2Token(args[0], strings.Join(flagx.MustGetStringSlice(cmd, "scope"), " "))
-	checkResponse(err, http.StatusOK, response)
-	fmt.Println(formatResponse(result))
+	result, err := c.Admin.IntrospectOAuth2Token(admin.NewIntrospectOAuth2TokenParams().
+		WithToken(args[0]).
+		WithScope(pointerx.String(strings.Join(flagx.MustGetStringSlice(cmd, "scope"), " "))),
+		ht,
+	)
+	cmdx.Must(err, "The request failed with the following error message:\n%s", formatSwaggerError(err))
+	fmt.Println(formatResponse(result.Payload))
 }

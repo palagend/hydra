@@ -1,20 +1,20 @@
 package tracing
 
 import (
-	"errors"
-	"fmt"
 	"io"
 	"strings"
 
 	opentracing "github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	jeagerConf "github.com/uber/jaeger-client-go/config"
+	"github.com/uber/jaeger-client-go/zipkin"
 )
 
 type Tracer struct {
 	ServiceName  string
 	Provider     string
-	Logger       *logrus.Logger
+	Logger       logrus.FieldLogger
 	JaegerConfig *JaegerConfig
 
 	tracer opentracing.Tracer
@@ -26,24 +26,49 @@ type JaegerConfig struct {
 	SamplerType        string
 	SamplerValue       float64
 	SamplerServerUrl   string
+	Propagation        string
 }
 
 func (t *Tracer) Setup() error {
 	switch strings.ToLower(t.Provider) {
 	case "jaeger":
-		jc := jeagerConf.Configuration{
-			Sampler: &jeagerConf.SamplerConfig{
-				SamplingServerURL: t.JaegerConfig.SamplerServerUrl,
-				Type:              t.JaegerConfig.SamplerType,
-				Param:             t.JaegerConfig.SamplerValue,
-			},
-			Reporter: &jeagerConf.ReporterConfig{
-				LocalAgentHostPort: t.JaegerConfig.LocalAgentHostPort,
-			},
+		jc, err := jeagerConf.FromEnv()
+
+		if err != nil {
+			return err
+		}
+
+		if t.JaegerConfig.SamplerServerUrl != "" {
+			jc.Sampler.SamplingServerURL = t.JaegerConfig.SamplerServerUrl
+		}
+
+		if t.JaegerConfig.SamplerType != "" {
+			jc.Sampler.Type = t.JaegerConfig.SamplerType
+		}
+
+		if t.JaegerConfig.SamplerValue != 0 {
+			jc.Sampler.Param = t.JaegerConfig.SamplerValue
+		}
+
+		if t.JaegerConfig.LocalAgentHostPort != "" {
+			jc.Reporter.LocalAgentHostPort = t.JaegerConfig.LocalAgentHostPort
+		}
+
+		var configs []jeagerConf.Option
+
+		// This works in other jaeger clients, but is not part of jaeger-client-go
+		if t.JaegerConfig.Propagation == "b3" {
+			zipkinPropagator := zipkin.NewZipkinB3HTTPHeaderPropagator()
+			configs = append(
+				configs,
+				jeagerConf.Injector(opentracing.HTTPHeaders, zipkinPropagator),
+				jeagerConf.Extractor(opentracing.HTTPHeaders, zipkinPropagator),
+			)
 		}
 
 		closer, err := jc.InitGlobalTracer(
 			t.ServiceName,
+			configs...,
 		)
 
 		if err != nil {
@@ -56,7 +81,7 @@ func (t *Tracer) Setup() error {
 	case "":
 		t.Logger.Infof("No tracer configured - skipping tracing setup")
 	default:
-		return errors.New(fmt.Sprintf("unknown tracer: %s", t.Provider))
+		return errors.Errorf("unknown tracer: %s", t.Provider)
 	}
 	return nil
 }
@@ -108,6 +133,10 @@ func HelpMessage() string {
 - TRACING_PROVIDER_JAEGER_LOCAL_AGENT_ADDRESS: The address of the jaeger-agent where spans should be sent to
 
 	Example: TRACING_PROVIDER_JAEGER_LOCAL_AGENT_ADDRESS=127.0.0.1:6831
+
+- TRACING_PROVIDER_JAEGER_PROPAGATION: The tracing header propagation format. Defaults to jaeger.
+
+	Example: TRACING_PROVIDER_JAEGER_PROPAGATION=b3
 
 - TRACING_SERVICE_NAME: Specifies the service name to use on the tracer.
 

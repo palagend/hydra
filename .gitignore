@@ -17,3 +17,7 @@ plugin-*.so
 hydra-docker-bin
 cookies.txt
 vendor/
+LICENSE.txt
+./hydra
+!./hydra/
+hydra-login-consent-node

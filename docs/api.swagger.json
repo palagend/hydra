@@ -91,7 +91,7 @@
     },
     "/clients": {
       "get": {
-        "description": "This endpoint lists all clients in the database, and never returns client secrets.\n\nOAuth 2.0 clients are used to perform OAuth 2.0 and OpenID Connect flows. Usually, OAuth 2.0 clients are generated for applications which want to consume your OAuth 2.0 or OpenID Connect capabilities. To manage ORY Hydra, you will need an OAuth 2.0 Client as well. Make sure that this endpoint is well protected and only callable by first-party components.",
+        "description": "This endpoint lists all clients in the database, and never returns client secrets.\n\nOAuth 2.0 clients are used to perform OAuth 2.0 and OpenID Connect flows. Usually, OAuth 2.0 clients are generated for applications which want to consume your OAuth 2.0 or OpenID Connect capabilities. To manage ORY Hydra, you will need an OAuth 2.0 Client as well. Make sure that this endpoint is well protected and only callable by first-party components.\nThe \"Link\" header is also included in successful responses, which contains one or more links for pagination, formatted like so: '\u003chttps://hydra-url/admin/clients?limit={limit}\u0026offset={offset}\u003e; rel=\"{page}\"', where page is one of the following applicable pages: 'first', 'next', 'last', and 'previous'.\nMultiple links can be included in this header, and will be separated by a comma.",
         "consumes": [
           "application/json"
         ],
@@ -129,18 +129,6 @@
           "200": {
             "$ref": "#/responses/oAuth2ClientList"
           },
-          "401": {
-            "description": "genericError",
-            "schema": {
-              "$ref": "#/definitions/genericError"
-            }
-          },
-          "403": {
-            "description": "genericError",
-            "schema": {
-              "$ref": "#/definitions/genericError"
-            }
-          },
           "500": {
             "description": "genericError",
             "schema": {
@@ -177,19 +165,19 @@
           }
         ],
         "responses": {
-          "200": {
+          "201": {
             "description": "oAuth2Client",
             "schema": {
               "$ref": "#/definitions/oAuth2Client"
             }
           },
-          "401": {
+          "400": {
             "description": "genericError",
             "schema": {
               "$ref": "#/definitions/genericError"
             }
           },
-          "403": {
+          "409": {
             "description": "genericError",
             "schema": {
               "$ref": "#/definitions/genericError"
@@ -240,13 +228,7 @@
               "$ref": "#/definitions/oAuth2Client"
             }
           },
-          "401": {
-            "description": "genericError",
-            "schema": {
-              "$ref": "#/definitions/genericError"
-            }
-          },
-          "403": {
+          "404": {
             "description": "genericError",
             "schema": {
               "$ref": "#/definitions/genericError"
@@ -301,18 +283,6 @@
               "$ref": "#/definitions/oAuth2Client"
             }
           },
-          "401": {
-            "description": "genericError",
-            "schema": {
-              "$ref": "#/definitions/genericError"
-            }
-          },
-          "403": {
-            "description": "genericError",
-            "schema": {
-              "$ref": "#/definitions/genericError"
-            }
-          },
           "500": {
             "description": "genericError",
             "schema": {
@@ -353,13 +323,7 @@
           "204": {
             "$ref": "#/responses/emptyResponse"
           },
-          "401": {
-            "description": "genericError",
-            "schema": {
-              "$ref": "#/definitions/genericError"
-            }
-          },
-          "403": {
+          "404": {
             "description": "genericError",
             "schema": {
               "$ref": "#/definitions/genericError"
@@ -579,7 +543,7 @@
           }
         ],
         "responses": {
-          "200": {
+          "201": {
             "description": "JSONWebKeySet",
             "schema": {
               "$ref": "#/definitions/JSONWebKeySet"
@@ -877,9 +841,9 @@
         }
       }
     },
-    "/oauth2/auth/requests/consent/{challenge}": {
+    "/oauth2/auth/requests/consent": {
       "get": {
-        "description": "When an authorization code, hybrid, or implicit OAuth 2.0 Flow is initiated, ORY Hydra asks the login provider\nto authenticate the user and then tell ORY Hydra now about it. If the user authenticated, he/she must now be asked if\nthe OAuth 2.0 Client which initiated the flow should be allowed to access the resources on the user's behalf.\n\nThe consent provider which handles this request and is a web app implemented and hosted by you. It shows a user interface which asks the user to\ngrant or deny the client access to the requested scope (\"Application my-dropbox-app wants write access to all your private files\").\n\nThe consent challenge is appended to the consent provider's URL to which the user's user-agent (browser) is redirected to. The consent\nprovider uses that challenge to fetch information on the OAuth2 request and then tells ORY Hydra if the user accepted\nor rejected the request.",
+        "description": "When an authorization code, hybrid, or implicit OAuth 2.0 Flow is initiated, ORY Hydra asks the login provider\nto authenticate the subject and then tell ORY Hydra now about it. If the subject authenticated, he/she must now be asked if\nthe OAuth 2.0 Client which initiated the flow should be allowed to access the resources on the subject's behalf.\n\nThe consent provider which handles this request and is a web app implemented and hosted by you. It shows a subject interface which asks the subject to\ngrant or deny the client access to the requested scope (\"Application my-dropbox-app wants write access to all your private files\").\n\nThe consent challenge is appended to the consent provider's URL to which the subject's user-agent (browser) is redirected to. The consent\nprovider uses that challenge to fetch information on the OAuth2 request and then tells ORY Hydra if the subject accepted\nor rejected the request.",
         "consumes": [
           "application/json"
         ],
@@ -899,8 +863,8 @@
           {
             "type": "string",
             "x-go-name": "Challenge",
-            "name": "challenge",
-            "in": "path",
+            "name": "consent_challenge",
+            "in": "query",
             "required": true
           }
         ],
@@ -911,7 +875,7 @@
               "$ref": "#/definitions/consentRequest"
             }
           },
-          "401": {
+          "404": {
             "description": "genericError",
             "schema": {
               "$ref": "#/definitions/genericError"
@@ -932,9 +896,9 @@
         }
       }
     },
-    "/oauth2/auth/requests/consent/{challenge}/accept": {
+    "/oauth2/auth/requests/consent/accept": {
       "put": {
-        "description": "When an authorization code, hybrid, or implicit OAuth 2.0 Flow is initiated, ORY Hydra asks the login provider\nto authenticate the user and then tell ORY Hydra now about it. If the user authenticated, he/she must now be asked if\nthe OAuth 2.0 Client which initiated the flow should be allowed to access the resources on the user's behalf.\n\nThe consent provider which handles this request and is a web app implemented and hosted by you. It shows a user interface which asks the user to\ngrant or deny the client access to the requested scope (\"Application my-dropbox-app wants write access to all your private files\").\n\nThe consent challenge is appended to the consent provider's URL to which the user's user-agent (browser) is redirected to. The consent\nprovider uses that challenge to fetch information on the OAuth2 request and then tells ORY Hydra if the user accepted\nor rejected the request.\n\nThis endpoint tells ORY Hydra that the user has authorized the OAuth 2.0 client to access resources on his/her behalf.\nThe consent provider includes additional information, such as session data for access and ID tokens, and if the\nconsent request should be used as basis for future requests.\n\nThe response contains a redirect URL which the consent provider should redirect the user-agent to.",
+        "description": "When an authorization code, hybrid, or implicit OAuth 2.0 Flow is initiated, ORY Hydra asks the login provider\nto authenticate the subject and then tell ORY Hydra now about it. If the subject authenticated, he/she must now be asked if\nthe OAuth 2.0 Client which initiated the flow should be allowed to access the resources on the subject's behalf.\n\nThe consent provider which handles this request and is a web app implemented and hosted by you. It shows a subject interface which asks the subject to\ngrant or deny the client access to the requested scope (\"Application my-dropbox-app wants write access to all your private files\").\n\nThe consent challenge is appended to the consent provider's URL to which the subject's user-agent (browser) is redirected to. The consent\nprovider uses that challenge to fetch information on the OAuth2 request and then tells ORY Hydra if the subject accepted\nor rejected the request.\n\nThis endpoint tells ORY Hydra that the subject has authorized the OAuth 2.0 client to access resources on his/her behalf.\nThe consent provider includes additional information, such as session data for access and ID tokens, and if the\nconsent request should be used as basis for future requests.\n\nThe response contains a redirect URL which the consent provider should redirect the user-agent to.",
         "consumes": [
           "application/json"
         ],
@@ -954,8 +918,8 @@
           {
             "type": "string",
             "x-go-name": "Challenge",
-            "name": "challenge",
-            "in": "path",
+            "name": "consent_challenge",
+            "in": "query",
             "required": true
           },
           {
@@ -973,7 +937,7 @@
               "$ref": "#/definitions/completedRequest"
             }
           },
-          "401": {
+          "404": {
             "description": "genericError",
             "schema": {
               "$ref": "#/definitions/genericError"
@@ -988,9 +952,9 @@
         }
       }
     },
-    "/oauth2/auth/requests/consent/{challenge}/reject": {
+    "/oauth2/auth/requests/consent/reject": {
       "put": {
-        "description": "When an authorization code, hybrid, or implicit OAuth 2.0 Flow is initiated, ORY Hydra asks the login provider\nto authenticate the user and then tell ORY Hydra now about it. If the user authenticated, he/she must now be asked if\nthe OAuth 2.0 Client which initiated the flow should be allowed to access the resources on the user's behalf.\n\nThe consent provider which handles this request and is a web app implemented and hosted by you. It shows a user interface which asks the user to\ngrant or deny the client access to the requested scope (\"Application my-dropbox-app wants write access to all your private files\").\n\nThe consent challenge is appended to the consent provider's URL to which the user's user-agent (browser) is redirected to. The consent\nprovider uses that challenge to fetch information on the OAuth2 request and then tells ORY Hydra if the user accepted\nor rejected the request.\n\nThis endpoint tells ORY Hydra that the user has not authorized the OAuth 2.0 client to access resources on his/her behalf.\nThe consent provider must include a reason why the consent was not granted.\n\nThe response contains a redirect URL which the consent provider should redirect the user-agent to.",
+        "description": "When an authorization code, hybrid, or implicit OAuth 2.0 Flow is initiated, ORY Hydra asks the login provider\nto authenticate the subject and then tell ORY Hydra now about it. If the subject authenticated, he/she must now be asked if\nthe OAuth 2.0 Client which initiated the flow should be allowed to access the resources on the subject's behalf.\n\nThe consent provider which handles this request and is a web app implemented and hosted by you. It shows a subject interface which asks the subject to\ngrant or deny the client access to the requested scope (\"Application my-dropbox-app wants write access to all your private files\").\n\nThe consent challenge is appended to the consent provider's URL to which the subject's user-agent (browser) is redirected to. The consent\nprovider uses that challenge to fetch information on the OAuth2 request and then tells ORY Hydra if the subject accepted\nor rejected the request.\n\nThis endpoint tells ORY Hydra that the subject has not authorized the OAuth 2.0 client to access resources on his/her behalf.\nThe consent provider must include a reason why the consent was not granted.\n\nThe response contains a redirect URL which the consent provider should redirect the user-agent to.",
         "consumes": [
           "application/json"
         ],
@@ -1010,8 +974,8 @@
           {
             "type": "string",
             "x-go-name": "Challenge",
-            "name": "challenge",
-            "in": "path",
+            "name": "consent_challenge",
+            "in": "query",
             "required": true
           },
           {
@@ -1029,7 +993,7 @@
               "$ref": "#/definitions/completedRequest"
             }
           },
-          "401": {
+          "404": {
             "description": "genericError",
             "schema": {
               "$ref": "#/definitions/genericError"
@@ -1044,9 +1008,9 @@
         }
       }
     },
-    "/oauth2/auth/requests/login/{challenge}": {
+    "/oauth2/auth/requests/login": {
       "get": {
-        "description": "When an authorization code, hybrid, or implicit OAuth 2.0 Flow is initiated, ORY Hydra asks the login provider\n(sometimes called \"identity provider\") to authenticate the user and then tell ORY Hydra now about it. The login\nprovider is an web-app you write and host, and it must be able to authenticate (\"show the user a login screen\")\na user (in OAuth2 the proper name for user is \"resource owner\").\n\nThe authentication challenge is appended to the login provider URL to which the user's user-agent (browser) is redirected to. The login\nprovider uses that challenge to fetch information on the OAuth2 request and then accept or reject the requested authentication process.",
+        "description": "When an authorization code, hybrid, or implicit OAuth 2.0 Flow is initiated, ORY Hydra asks the login provider\n(sometimes called \"identity provider\") to authenticate the subject and then tell ORY Hydra now about it. The login\nprovider is an web-app you write and host, and it must be able to authenticate (\"show the subject a login screen\")\na subject (in OAuth2 the proper name for subject is \"resource owner\").\n\nThe authentication challenge is appended to the login provider URL to which the subject's user-agent (browser) is redirected to. The login\nprovider uses that challenge to fetch information on the OAuth2 request and then accept or reject the requested authentication process.",
         "consumes": [
           "application/json"
         ],
@@ -1066,8 +1030,8 @@
           {
             "type": "string",
             "x-go-name": "Challenge",
-            "name": "challenge",
-            "in": "path",
+            "name": "login_challenge",
+            "in": "query",
             "required": true
           }
         ],
@@ -1078,7 +1042,13 @@
               "$ref": "#/definitions/loginRequest"
             }
           },
-          "401": {
+          "400": {
+            "description": "genericError",
+            "schema": {
+              "$ref": "#/definitions/genericError"
+            }
+          },
+          "404": {
             "description": "genericError",
             "schema": {
               "$ref": "#/definitions/genericError"
@@ -1099,9 +1069,9 @@
         }
       }
     },
-    "/oauth2/auth/requests/login/{challenge}/accept": {
+    "/oauth2/auth/requests/login/accept": {
       "put": {
-        "description": "When an authorization code, hybrid, or implicit OAuth 2.0 Flow is initiated, ORY Hydra asks the login provider\n(sometimes called \"identity provider\") to authenticate the user and then tell ORY Hydra now about it. The login\nprovider is an web-app you write and host, and it must be able to authenticate (\"show the user a login screen\")\na user (in OAuth2 the proper name for user is \"resource owner\").\n\nThe authentication challenge is appended to the login provider URL to which the user's user-agent (browser) is redirected to. The login\nprovider uses that challenge to fetch information on the OAuth2 request and then accept or reject the requested authentication process.\n\nThis endpoint tells ORY Hydra that the user has successfully authenticated and includes additional information such as\nthe user's ID and if ORY Hydra should remember the user's user agent for future authentication attempts by setting\na cookie.\n\nThe response contains a redirect URL which the login provider should redirect the user-agent to.",
+        "description": "When an authorization code, hybrid, or implicit OAuth 2.0 Flow is initiated, ORY Hydra asks the login provider\n(sometimes called \"identity provider\") to authenticate the subject and then tell ORY Hydra now about it. The login\nprovider is an web-app you write and host, and it must be able to authenticate (\"show the subject a login screen\")\na subject (in OAuth2 the proper name for subject is \"resource owner\").\n\nThe authentication challenge is appended to the login provider URL to which the subject's user-agent (browser) is redirected to. The login\nprovider uses that challenge to fetch information on the OAuth2 request and then accept or reject the requested authentication process.\n\nThis endpoint tells ORY Hydra that the subject has successfully authenticated and includes additional information such as\nthe subject's ID and if ORY Hydra should remember the subject's subject agent for future authentication attempts by setting\na cookie.\n\nThe response contains a redirect URL which the login provider should redirect the user-agent to.",
         "consumes": [
           "application/json"
         ],
@@ -1121,8 +1091,8 @@
           {
             "type": "string",
             "x-go-name": "Challenge",
-            "name": "challenge",
-            "in": "path",
+            "name": "login_challenge",
+            "in": "query",
             "required": true
           },
           {
@@ -1146,6 +1116,12 @@
               "$ref": "#/definitions/genericError"
             }
           },
+          "404": {
+            "description": "genericError",
+            "schema": {
+              "$ref": "#/definitions/genericError"
+            }
+          },
           "500": {
             "description": "genericError",
             "schema": {
@@ -1155,9 +1131,9 @@
         }
       }
     },
-    "/oauth2/auth/requests/login/{challenge}/reject": {
+    "/oauth2/auth/requests/login/reject": {
       "put": {
-        "description": "When an authorization code, hybrid, or implicit OAuth 2.0 Flow is initiated, ORY Hydra asks the login provider\n(sometimes called \"identity provider\") to authenticate the user and then tell ORY Hydra now about it. The login\nprovider is an web-app you write and host, and it must be able to authenticate (\"show the user a login screen\")\na user (in OAuth2 the proper name for user is \"resource owner\").\n\nThe authentication challenge is appended to the login provider URL to which the user's user-agent (browser) is redirected to. The login\nprovider uses that challenge to fetch information on the OAuth2 request and then accept or reject the requested authentication process.\n\nThis endpoint tells ORY Hydra that the user has not authenticated and includes a reason why the authentication\nwas be denied.\n\nThe response contains a redirect URL which the login provider should redirect the user-agent to.",
+        "description": "When an authorization code, hybrid, or implicit OAuth 2.0 Flow is initiated, ORY Hydra asks the login provider\n(sometimes called \"identity provider\") to authenticate the subject and then tell ORY Hydra now about it. The login\nprovider is an web-app you write and host, and it must be able to authenticate (\"show the subject a login screen\")\na subject (in OAuth2 the proper name for subject is \"resource owner\").\n\nThe authentication challenge is appended to the login provider URL to which the subject's user-agent (browser) is redirected to. The login\nprovider uses that challenge to fetch information on the OAuth2 request and then accept or reject the requested authentication process.\n\nThis endpoint tells ORY Hydra that the subject has not authenticated and includes a reason why the authentication\nwas be denied.\n\nThe response contains a redirect URL which the login provider should redirect the user-agent to.",
         "consumes": [
           "application/json"
         ],
@@ -1177,8 +1153,8 @@
           {
             "type": "string",
             "x-go-name": "Challenge",
-            "name": "challenge",
-            "in": "path",
+            "name": "login_challenge",
+            "in": "query",
             "required": true
           },
           {
@@ -1202,6 +1178,12 @@
               "$ref": "#/definitions/genericError"
             }
           },
+          "404": {
+            "description": "genericError",
+            "schema": {
+              "$ref": "#/definitions/genericError"
+            }
+          },
           "500": {
             "description": "genericError",
             "schema": {
@@ -1211,9 +1193,151 @@
         }
       }
     },
-    "/oauth2/auth/sessions/consent/{user}": {
+    "/oauth2/auth/requests/logout": {
       "get": {
-        "description": "This endpoint lists all user's granted consent sessions, including client and granted scope",
+        "description": "Use this endpoint to fetch a logout request.",
+        "produces": [
+          "application/json"
+        ],
+        "schemes": [
+          "http",
+          "https"
+        ],
+        "tags": [
+          "admin"
+        ],
+        "summary": "Get a logout request",
+        "operationId": "getLogoutRequest",
+        "parameters": [
+          {
+            "type": "string",
+            "x-go-name": "Challenge",
+            "name": "logout_challenge",
+            "in": "query",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "logoutRequest",
+            "schema": {
+              "$ref": "#/definitions/logoutRequest"
+            }
+          },
+          "404": {
+            "description": "genericError",
+            "schema": {
+              "$ref": "#/definitions/genericError"
+            }
+          },
+          "500": {
+            "description": "genericError",
+            "schema": {
+              "$ref": "#/definitions/genericError"
+            }
+          }
+        }
+      }
+    },
+    "/oauth2/auth/requests/logout/accept": {
+      "put": {
+        "description": "When a user or an application requests ORY Hydra to log out a user, this endpoint is used to confirm that logout request.\nNo body is required.\n\nThe response contains a redirect URL which the consent provider should redirect the user-agent to.",
+        "produces": [
+          "application/json"
+        ],
+        "schemes": [
+          "http",
+          "https"
+        ],
+        "tags": [
+          "admin"
+        ],
+        "summary": "Accept a logout request",
+        "operationId": "acceptLogoutRequest",
+        "parameters": [
+          {
+            "type": "string",
+            "x-go-name": "Challenge",
+            "name": "logout_challenge",
+            "in": "query",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "completedRequest",
+            "schema": {
+              "$ref": "#/definitions/completedRequest"
+            }
+          },
+          "404": {
+            "description": "genericError",
+            "schema": {
+              "$ref": "#/definitions/genericError"
+            }
+          },
+          "500": {
+            "description": "genericError",
+            "schema": {
+              "$ref": "#/definitions/genericError"
+            }
+          }
+        }
+      }
+    },
+    "/oauth2/auth/requests/logout/reject": {
+      "put": {
+        "description": "When a user or an application requests ORY Hydra to log out a user, this endpoint is used to deny that logout request.\nNo body is required.\n\nThe response is empty as the logout provider has to chose what action to perform next.",
+        "produces": [
+          "application/json"
+        ],
+        "schemes": [
+          "http",
+          "https"
+        ],
+        "tags": [
+          "admin"
+        ],
+        "summary": "Reject a logout request",
+        "operationId": "rejectLogoutRequest",
+        "parameters": [
+          {
+            "type": "string",
+            "x-go-name": "Challenge",
+            "name": "logout_challenge",
+            "in": "query",
+            "required": true
+          },
+          {
+            "name": "Body",
+            "in": "body",
+            "schema": {
+              "$ref": "#/definitions/rejectRequest"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "$ref": "#/responses/emptyResponse"
+          },
+          "404": {
+            "description": "genericError",
+            "schema": {
+              "$ref": "#/definitions/genericError"
+            }
+          },
+          "500": {
+            "description": "genericError",
+            "schema": {
+              "$ref": "#/definitions/genericError"
+            }
+          }
+        }
+      }
+    },
+    "/oauth2/auth/sessions/consent": {
+      "get": {
+        "description": "This endpoint lists all subject's granted consent sessions, including client and granted scope.\nThe \"Link\" header is also included in successful responses, which contains one or more links for pagination, formatted like so: '\u003chttps://hydra-url/admin/oauth2/auth/sessions/consent?subject={user}\u0026limit={limit}\u0026offset={offset}\u003e; rel=\"{page}\"', where page is one of the following applicable pages: 'first', 'next', 'last', and 'previous'.\nMultiple links can be included in this header, and will be separated by a comma.",
         "consumes": [
           "application/json"
         ],
@@ -1227,14 +1351,14 @@
         "tags": [
           "admin"
         ],
-        "summary": "Lists all consent sessions of a user",
-        "operationId": "listUserConsentSessions",
+        "summary": "Lists all consent sessions of a subject",
+        "operationId": "listSubjectConsentSessions",
         "parameters": [
           {
             "type": "string",
-            "x-go-name": "User",
-            "name": "user",
-            "in": "path",
+            "x-go-name": "Subject",
+            "name": "subject",
+            "in": "query",
             "required": true
           }
         ],
@@ -1242,13 +1366,13 @@
           "200": {
             "$ref": "#/responses/handledConsentRequestList"
           },
-          "401": {
+          "400": {
             "description": "genericError",
             "schema": {
               "$ref": "#/definitions/genericError"
             }
           },
-          "403": {
+          "404": {
             "description": "genericError",
             "schema": {
               "$ref": "#/definitions/genericError"
@@ -1263,7 +1387,7 @@
         }
       },
       "delete": {
-        "description": "This endpoint revokes a user's granted consent sessions and invalidates all associated OAuth 2.0 Access Tokens.",
+        "description": "This endpoint revokes a subject's granted consent sessions for a specific OAuth 2.0 Client and invalidates all\nassociated OAuth 2.0 Access Tokens.",
         "consumes": [
           "application/json"
         ],
@@ -1277,107 +1401,34 @@
         "tags": [
           "admin"
         ],
-        "summary": "Revokes all previous consent sessions of a user",
-        "operationId": "revokeAllUserConsentSessions",
+        "summary": "Revokes consent sessions of a subject for a specific OAuth 2.0 Client",
+        "operationId": "revokeConsentSessions",
         "parameters": [
           {
             "type": "string",
-            "x-go-name": "User",
-            "name": "user",
-            "in": "path",
-            "required": true
-          }
-        ],
-        "responses": {
-          "204": {
-            "$ref": "#/responses/emptyResponse"
-          },
-          "404": {
-            "description": "genericError",
-            "schema": {
-              "$ref": "#/definitions/genericError"
-            }
-          },
-          "500": {
-            "description": "genericError",
-            "schema": {
-              "$ref": "#/definitions/genericError"
-            }
-          }
-        }
-      }
-    },
-    "/oauth2/auth/sessions/consent/{user}/{client}": {
-      "delete": {
-        "description": "This endpoint revokes a user's granted consent sessions for a specific OAuth 2.0 Client and invalidates all\nassociated OAuth 2.0 Access Tokens.",
-        "consumes": [
-          "application/json"
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "schemes": [
-          "http",
-          "https"
-        ],
-        "tags": [
-          "admin"
-        ],
-        "summary": "Revokes consent sessions of a user for a specific OAuth 2.0 Client",
-        "operationId": "revokeUserClientConsentSessions",
-        "parameters": [
-          {
-            "type": "string",
-            "x-go-name": "User",
-            "name": "user",
-            "in": "path",
+            "x-go-name": "Subject",
+            "description": "The subject (Subject) who's consent sessions should be deleted.",
+            "name": "subject",
+            "in": "query",
             "required": true
           },
           {
             "type": "string",
             "x-go-name": "Client",
+            "description": "If set, deletes only those consent sessions by the Subject that have been granted to the specified OAuth 2.0 Client ID",
             "name": "client",
-            "in": "path",
-            "required": true
+            "in": "query"
           }
         ],
         "responses": {
           "204": {
             "$ref": "#/responses/emptyResponse"
           },
-          "404": {
+          "400": {
             "description": "genericError",
             "schema": {
               "$ref": "#/definitions/genericError"
             }
-          },
-          "500": {
-            "description": "genericError",
-            "schema": {
-              "$ref": "#/definitions/genericError"
-            }
-          }
-        }
-      }
-    },
-    "/oauth2/auth/sessions/login/revoke": {
-      "get": {
-        "description": "This endpoint deletes ths user's login session cookie and redirects the browser to the url\nlisted in `LOGOUT_REDIRECT_URL` environment variable. This endpoint does not work as an API but has to\nbe called from the user's browser.",
-        "produces": [
-          "application/json"
-        ],
-        "schemes": [
-          "http",
-          "https"
-        ],
-        "tags": [
-          "admin"
-        ],
-        "summary": "Logs user out by deleting the session cookie",
-        "operationId": "revokeUserLoginCookie",
-        "responses": {
-          "302": {
-            "$ref": "#/responses/emptyResponse"
           },
           "404": {
             "description": "genericError",
@@ -1394,9 +1445,9 @@
         }
       }
     },
-    "/oauth2/auth/sessions/login/{user}": {
+    "/oauth2/auth/sessions/login": {
       "delete": {
-        "description": "This endpoint invalidates a user's authentication session. After revoking the authentication session, the user\nhas to re-authenticate at ORY Hydra. This endpoint does not invalidate any tokens.",
+        "description": "This endpoint invalidates a subject's authentication session. After revoking the authentication session, the subject\nhas to re-authenticate at ORY Hydra. This endpoint does not invalidate any tokens and does not work with OpenID Connect\nFront- or Back-channel logout.",
         "consumes": [
           "application/json"
         ],
@@ -1410,20 +1461,26 @@
         "tags": [
           "admin"
         ],
-        "summary": "Invalidates a user's authentication session",
+        "summary": "Invalidates all login sessions of a certain user\nInvalidates a subject's authentication session",
         "operationId": "revokeAuthenticationSession",
         "parameters": [
           {
             "type": "string",
-            "x-go-name": "User",
-            "name": "user",
-            "in": "path",
+            "x-go-name": "Subject",
+            "name": "subject",
+            "in": "query",
             "required": true
           }
         ],
         "responses": {
           "204": {
             "$ref": "#/responses/emptyResponse"
+          },
+          "400": {
+            "description": "genericError",
+            "schema": {
+              "$ref": "#/definitions/genericError"
+            }
           },
           "404": {
             "description": "genericError",
@@ -1513,7 +1570,7 @@
           {
             "type": "string",
             "x-go-name": "Token",
-            "description": "The string value of the token. For access tokens, this\nis the \"access_token\" value returned from the token endpoint\ndefined in OAuth 2.0 [RFC6749], Section 5.1.\nThis endpoint DOES NOT accept refresh tokens for validation.",
+            "description": "The string value of the token. For access tokens, this\nis the \"access_token\" value returned from the token endpoint\ndefined in OAuth 2.0. For refresh tokens, this is the \"refresh_token\"\nvalue returned.",
             "name": "token",
             "in": "formData",
             "required": true
@@ -1558,7 +1615,7 @@
             "oauth2": []
           }
         ],
-        "description": "Revoking a token (both access and refresh) means that the tokens will be invalid. A revoked access token can no\nlonger be used to make access requests, and a revoked refresh token can no longer be used to refresh an access token.\nRevoking a refresh token also invalidates the access token that was created with it.",
+        "description": "Revoking a token (both access and refresh) means that the tokens will be invalid. A revoked access token can no\nlonger be used to make access requests, and a revoked refresh token can no longer be used to refresh an access token.\nRevoking a refresh token also invalidates the access token that was created with it. A token may only be revoked by\nthe client the token was generated for.",
         "consumes": [
           "application/x-www-form-urlencoded"
         ],
@@ -1599,6 +1656,25 @@
         }
       }
     },
+    "/oauth2/sessions/logout": {
+      "get": {
+        "description": "This endpoint initiates and completes user logout at ORY Hydra and initiates OpenID Connect Front-/Back-channel logout:\n\nhttps://openid.net/specs/openid-connect-frontchannel-1_0.html\nhttps://openid.net/specs/openid-connect-backchannel-1_0.html",
+        "schemes": [
+          "http",
+          "https"
+        ],
+        "tags": [
+          "public"
+        ],
+        "summary": "OpenID Connect Front-Backchannel enabled Logout",
+        "operationId": "disconnectUser",
+        "responses": {
+          "302": {
+            "$ref": "#/responses/emptyResponse"
+          }
+        }
+      }
+    },
     "/oauth2/token": {
       "post": {
         "security": [
@@ -1609,7 +1685,7 @@
             "oauth2": []
           }
         ],
-        "description": "This endpoint is not documented here because you should never use your own implementation to perform OAuth2 flows.\nOAuth2 is a very popular protocol and a library for your programming language will exists.\n\nTo learn more about this flow please refer to the specification: https://tools.ietf.org/html/rfc6749",
+        "description": "The client makes a request to the token endpoint by sending the\nfollowing parameters using the \"application/x-www-form-urlencoded\" HTTP\nrequest entity-body.\n\n\u003e Do not implement a client for this endpoint yourself. Use a library. There are many libraries\n\u003e available for any programming language. You can find a list of libraries here: https://oauth.net/code/\n\u003e\n\u003e Do not the the Hydra SDK does not implement this endpoint properly. Use one of the libraries listed above!",
         "consumes": [
           "application/x-www-form-urlencoded"
         ],
@@ -1624,12 +1700,39 @@
           "public"
         ],
         "summary": "The OAuth 2.0 token endpoint",
-        "operationId": "oauthToken",
+        "operationId": "oauth2Token",
+        "parameters": [
+          {
+            "type": "string",
+            "x-go-name": "GrantType",
+            "name": "grant_type",
+            "in": "formData",
+            "required": true
+          },
+          {
+            "type": "string",
+            "x-go-name": "Code",
+            "name": "code",
+            "in": "formData"
+          },
+          {
+            "type": "string",
+            "x-go-name": "RedirectURI",
+            "name": "redirect_uri",
+            "in": "formData"
+          },
+          {
+            "type": "string",
+            "x-go-name": "ClientID",
+            "name": "client_id",
+            "in": "formData"
+          }
+        ],
         "responses": {
           "200": {
-            "description": "oauthTokenResponse",
+            "description": "oauth2TokenResponse",
             "schema": {
-              "$ref": "#/definitions/oauthTokenResponse"
+              "$ref": "#/definitions/oauth2TokenResponse"
             }
           },
           "401": {
@@ -1712,22 +1815,6 @@
     }
   },
   "definitions": {
-    "AuthenticationSession": {
-      "type": "object",
-      "properties": {
-        "AuthenticatedAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "ID": {
-          "type": "string"
-        },
-        "Subject": {
-          "type": "string"
-        }
-      },
-      "x-go-package": "github.com/ory/hydra/consent"
-    },
     "JSONWebKey": {
       "type": "object",
       "required": [
@@ -1849,7 +1936,7 @@
       "x-go-package": "github.com/ory/hydra/jwk"
     },
     "PreviousConsentSession": {
-      "description": "The response used to return handled consent requests\nsame as HandledAuthenticationRequest, just with consent_request exposed as json",
+      "description": "The response used to return used consent requests\nsame as HandledLoginRequest, just with consent_request exposed as json",
       "type": "object",
       "properties": {
         "consent_request": {
@@ -1928,12 +2015,23 @@
     },
     "acceptLoginRequest": {
       "type": "object",
-      "title": "The request payload used to accept a login request.",
+      "title": "HandledLoginRequest is the request payload used to accept a login request.",
+      "required": [
+        "subject"
+      ],
       "properties": {
         "acr": {
           "description": "ACR sets the Authentication AuthorizationContext Class Reference value for this authentication session. You can use it\nto express that, for example, a user authenticated using two factor authentication.",
           "type": "string",
           "x-go-name": "ACR"
+        },
+        "context": {
+          "description": "Context is an optional object which can hold arbitrary data. The data will be made available when fetching the\nconsent request under the \"context\" field. This is useful in scenarios where login and consent endpoints share\ndata.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "object"
+          },
+          "x-go-name": "Context"
         },
         "force_subject_identifier": {
           "description": "ForceSubjectIdentifier forces the \"pairwise\" user ID of the end-user that authenticated. The \"pairwise\" user ID refers to the\n(Pairwise Identifier Algorithm)[http://openid.net/specs/openid-connect-core-1_0.html#PairwiseAlg] of the OpenID\nConnect specification. It allows you to set an obfuscated subject (\"user\") identifier that is unique to the client.\n\nPlease note that this changes the user ID on endpoint /userinfo and sub claim of the ID Token. It does not change the\nsub claim in the OAuth 2.0 Introspection.\n\nPer default, ORY Hydra handles this value with its own algorithm. In case you want to set this yourself\nyou can use this field. Please note that setting this field has no effect if `pairwise` is not configured in\nORY Hydra or the OAuth 2.0 Client does not expect a pairwise identifier (set via `subject_type` key in the client's\nconfiguration).\n\nPlease also be aware that ORY Hydra is unable to properly compute this value during authentication. This implies\nthat you have to compute this value on every authentication process (probably depending on the client ID or some\nother unique value).\n\nIf you fail to compute the proper value, then authentication processes which have id_token_hint set might fail.",
@@ -1957,7 +2055,7 @@
           "x-go-name": "Subject"
         }
       },
-      "x-go-name": "HandledAuthenticationRequest",
+      "x-go-name": "HandledLoginRequest",
       "x-go-package": "github.com/ory/hydra/consent"
     },
     "completedRequest": {
@@ -1990,13 +2088,21 @@
         "client": {
           "$ref": "#/definitions/oAuth2Client"
         },
+        "context": {
+          "description": "Context contains arbitrary information set by the login endpoint or is empty if not set.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "object"
+          },
+          "x-go-name": "Context"
+        },
         "login_challenge": {
           "description": "LoginChallenge is the login challenge this consent challenge belongs to. It can be used to associate\na login and consent request in the login \u0026 consent app.",
           "type": "string",
           "x-go-name": "LoginChallenge"
         },
         "login_session_id": {
-          "description": "LoginSessionID is the authentication session ID. It is set if the browser had a valid authentication session at\nORY Hydra during the login flow. It can be used to associate consecutive login requests by a certain user.",
+          "description": "LoginSessionID is the login session ID. If the user-agent reuses a login session (via cookie / remember flag)\nthis ID will remain the same. If the user-agent did not have an existing authentication session (e.g. remember is false)\nthis will be a new random value. This value is used as the \"sid\" parameter in the ID Token and in OIDC Front-/Back-\nchannel logout. It's value can generally be used to associate consecutive login requests by a certain user.",
           "type": "string",
           "x-go-name": "LoginSessionID"
         },
@@ -2088,30 +2194,30 @@
         "error"
       ],
       "properties": {
+        "debug": {
+          "description": "Debug contains debug information. This is usually not available and has to be enabled.",
+          "type": "string",
+          "x-go-name": "Debug",
+          "example": "The database adapter was unable to find the element"
+        },
         "error": {
           "description": "Name is the error name.",
           "type": "string",
           "x-go-name": "Name",
           "example": "The requested resource could not be found"
         },
-        "error_code": {
+        "error_description": {
+          "description": "Description contains further information on the nature of the error.",
+          "type": "string",
+          "x-go-name": "Description",
+          "example": "Object with ID 12345 does not exist"
+        },
+        "status_code": {
           "description": "Code represents the error status code (404, 403, 401, ...).",
           "type": "integer",
           "format": "int64",
           "x-go-name": "Code",
           "example": 404
-        },
-        "error_debug": {
-          "description": "Debug contains debug information. This is usually not available and has to be enabled.",
-          "type": "string",
-          "x-go-name": "Debug",
-          "example": "The database adapter was unable to find the element"
-        },
-        "error_hint": {
-          "description": "Hint contains further information on the nature of the error.",
-          "type": "string",
-          "x-go-name": "Hint",
-          "example": "Object with ID 12345 does not exist"
         }
       },
       "x-go-package": "github.com/ory/hydra"
@@ -2129,7 +2235,7 @@
         }
       },
       "x-go-name": "swaggerNotReadyStatus",
-      "x-go-package": "github.com/ory/x/healthx"
+      "x-go-package": "github.com/ory/hydra/vendor/github.com/ory/x/healthx"
     },
     "healthStatus": {
       "type": "object",
@@ -2141,7 +2247,7 @@
         }
       },
       "x-go-name": "swaggerHealthStatus",
-      "x-go-package": "github.com/ory/x/healthx"
+      "x-go-package": "github.com/ory/hydra/vendor/github.com/ory/x/healthx"
     },
     "jsonWebKeySetGeneratorRequest": {
       "type": "object",
@@ -2175,7 +2281,7 @@
       "title": "Contains information on an ongoing login request.",
       "properties": {
         "challenge": {
-          "description": "Challenge is the identifier (\"authentication challenge\") of the consent authentication request. It is used to\nidentify the session.",
+          "description": "Challenge is the identifier (\"login challenge\") of the login request. It is used to\nidentify the session.",
           "type": "string",
           "x-go-name": "Challenge"
         },
@@ -2207,7 +2313,7 @@
           "x-go-name": "RequestedScope"
         },
         "session_id": {
-          "description": "SessionID is the authentication session ID. It is set if the browser had a valid authentication session at\nORY Hydra during the login flow. It can be used to associate consecutive login requests by a certain user.",
+          "description": "SessionID is the login session ID. If the user-agent reuses a login session (via cookie / remember flag)\nthis ID will remain the same. If the user-agent did not have an existing authentication session (e.g. remember is false)\nthis will be a new random value. This value is used as the \"sid\" parameter in the ID Token and in OIDC Front-/Back-\nchannel logout. It's value can generally be used to associate consecutive login requests by a certain user.",
           "type": "string",
           "x-go-name": "SessionID"
         },
@@ -2222,7 +2328,35 @@
           "x-go-name": "Subject"
         }
       },
-      "x-go-name": "AuthenticationRequest",
+      "x-go-name": "LoginRequest",
+      "x-go-package": "github.com/ory/hydra/consent"
+    },
+    "logoutRequest": {
+      "type": "object",
+      "title": "Contains information about an ongoing logout request.",
+      "properties": {
+        "request_url": {
+          "description": "RequestURL is the original Logout URL requested.",
+          "type": "string",
+          "x-go-name": "RequestURL"
+        },
+        "rp_initiated": {
+          "description": "RPInitiated is set to true if the request was initiated by a Relying Party (RP), also known as an OAuth 2.0 Client.",
+          "type": "boolean",
+          "x-go-name": "RPInitiated"
+        },
+        "sid": {
+          "description": "SessionID is the login session ID that was requested to log out.",
+          "type": "string",
+          "x-go-name": "SessionID"
+        },
+        "subject": {
+          "description": "Subject is the user for whom the logout was request.",
+          "type": "string",
+          "x-go-name": "Subject"
+        }
+      },
+      "x-go-name": "LogoutRequest",
       "x-go-package": "github.com/ory/hydra/consent"
     },
     "oAuth2Client": {
@@ -2245,6 +2379,16 @@
           },
           "x-go-name": "Audience"
         },
+        "backchannel_logout_session_required": {
+          "description": "Boolean value specifying whether the RP requires that a sid (session ID) Claim be included in the Logout\nToken to identify the RP session with the OP when the backchannel_logout_uri is used.\nIf omitted, the default value is false.",
+          "type": "boolean",
+          "x-go-name": "BackChannelLogoutSessionRequired"
+        },
+        "backchannel_logout_uri": {
+          "description": "RP URL that will cause the RP to log itself out when sent a Logout Token by the OP.",
+          "type": "string",
+          "x-go-name": "BackChannelLogoutURI"
+        },
         "client_id": {
           "description": "ClientID  is the id for this client.",
           "type": "string",
@@ -2261,7 +2405,7 @@
           "x-go-name": "Secret"
         },
         "client_secret_expires_at": {
-          "description": "SecretExpiresAt is an integer holding the time at which the client\nsecret will expire or 0 if it will not expire. The time is\nrepresented as the number of seconds from 1970-01-01T00:00:00Z as\nmeasured in UTC until the date/time of expiration.",
+          "description": "SecretExpiresAt is an integer holding the time at which the client\nsecret will expire or 0 if it will not expire. The time is\nrepresented as the number of seconds from 1970-01-01T00:00:00Z as\nmeasured in UTC until the date/time of expiration.\n\nThis feature is currently not supported and it's value will always\nbe set to 0.",
           "type": "integer",
           "format": "int64",
           "x-go-name": "SecretExpiresAt"
@@ -2279,10 +2423,26 @@
           },
           "x-go-name": "Contacts"
         },
+        "created_at": {
+          "description": "CreatedAt returns the timestamp of the client's creation.",
+          "type": "string",
+          "format": "date-time",
+          "x-go-name": "CreatedAt"
+        },
+        "frontchannel_logout_session_required": {
+          "description": "Boolean value specifying whether the RP requires that iss (issuer) and sid (session ID) query parameters be\nincluded to identify the RP session with the OP when the frontchannel_logout_uri is used.\nIf omitted, the default value is false.",
+          "type": "boolean",
+          "x-go-name": "FrontChannelLogoutSessionRequired"
+        },
+        "frontchannel_logout_uri": {
+          "description": "RP URL that will cause the RP to log itself out when rendered in an iframe by the OP. An iss (issuer) query\nparameter and a sid (session ID) query parameter MAY be included by the OP to enable the RP to validate the\nrequest and to determine which of the potentially multiple sessions is to be logged out; if either is\nincluded, both MUST be.",
+          "type": "string",
+          "x-go-name": "FrontChannelLogoutURI"
+        },
         "grant_types": {
           "description": "GrantTypes is an array of grant types the client is allowed to use.",
           "type": "array",
-          "pattern": "client_credentials|authorize_code|implicit|refresh_token",
+          "pattern": "client_credentials|authorization_code|implicit|refresh_token",
           "items": {
             "type": "string"
           },
@@ -2310,6 +2470,14 @@
           "description": "PolicyURI is a URL string that points to a human-readable privacy policy document\nthat describes how the deployment organization collects, uses,\nretains, and discloses personal data.",
           "type": "string",
           "x-go-name": "PolicyURI"
+        },
+        "post_logout_redirect_uris": {
+          "description": "Array of URLs supplied by the RP to which it MAY request that the End-User's User Agent be redirected using the\npost_logout_redirect_uri parameter after a logout has been performed.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "x-go-name": "PostLogoutRedirectURIs"
         },
         "redirect_uris": {
           "description": "RedirectURIs is an array of allowed redirect urls for the client, for example http://mydomain/oauth/callback .",
@@ -2366,6 +2534,12 @@
           "description": "TermsOfServiceURI is a URL string that points to a human-readable terms of service\ndocument for the client that describes a contractual relationship\nbetween the end-user and the client that the end-user accepts when\nauthorizing the client.",
           "type": "string",
           "x-go-name": "TermsOfServiceURI"
+        },
+        "updated_at": {
+          "description": "UpdatedAt returns the timestamp of the last update.",
+          "type": "string",
+          "format": "date-time",
+          "x-go-name": "UpdatedAt"
         },
         "userinfo_signed_response_alg": {
           "description": "JWS alg algorithm [JWA] REQUIRED for signing UserInfo Responses. If this is specified, the response will be JWT\n[JWT] serialized, and signed using JWS. The default, if omitted, is for the UserInfo Response to return the Claims\nas a UTF-8 encoded JSON object using the application/json content-type.",
@@ -2460,6 +2634,30 @@
         }
       },
       "x-go-name": "Introspection",
+      "x-go-package": "github.com/ory/hydra/oauth2"
+    },
+    "oauth2TokenResponse": {
+      "description": "The Access Token Response",
+      "type": "object",
+      "properties": {
+        "access_token": {
+          "type": "string",
+          "x-go-name": "AccessToken"
+        },
+        "client_id": {
+          "type": "string",
+          "x-go-name": "RefreshToken"
+        },
+        "code": {
+          "type": "string",
+          "x-go-name": "TokenType"
+        },
+        "redirect_uri": {
+          "type": "string",
+          "x-go-name": "ExpiresIn"
+        }
+      },
+      "x-go-name": "swaggeroauth2TokenResponse",
       "x-go-package": "github.com/ory/hydra/oauth2"
     },
     "oauthTokenResponse": {
@@ -2686,7 +2884,7 @@
           "x-go-name": "Scope"
         },
         "token": {
-          "description": "The string value of the token. For access tokens, this\nis the \"access_token\" value returned from the token endpoint\ndefined in OAuth 2.0 [RFC6749], Section 5.1.\nThis endpoint DOES NOT accept refresh tokens for validation.",
+          "description": "The string value of the token. For access tokens, this\nis the \"access_token\" value returned from the token endpoint\ndefined in OAuth 2.0. For refresh tokens, this is the \"refresh_token\"\nvalue returned.",
           "type": "string",
           "x-go-name": "Token"
         }
@@ -2703,6 +2901,35 @@
           "description": "in: formData",
           "type": "string",
           "x-go-name": "Token"
+        }
+      },
+      "x-go-package": "github.com/ory/hydra/oauth2"
+    },
+    "swaggeroauth2TokenParameters": {
+      "type": "object",
+      "required": [
+        "grant_type"
+      ],
+      "properties": {
+        "client_id": {
+          "description": "in: formData",
+          "type": "string",
+          "x-go-name": "ClientID"
+        },
+        "code": {
+          "description": "in: formData",
+          "type": "string",
+          "x-go-name": "Code"
+        },
+        "grant_type": {
+          "description": "in: formData",
+          "type": "string",
+          "x-go-name": "GrantType"
+        },
+        "redirect_uri": {
+          "description": "in: formData",
+          "type": "string",
+          "x-go-name": "RedirectURI"
         }
       },
       "x-go-package": "github.com/ory/hydra/oauth2"
@@ -2821,7 +3048,7 @@
         }
       },
       "x-go-name": "swaggerVersion",
-      "x-go-package": "github.com/ory/x/healthx"
+      "x-go-package": "github.com/ory/hydra/vendor/github.com/ory/x/healthx"
     },
     "wellKnown": {
       "description": "It includes links to several endpoints (e.g. /oauth2/token) and exposes information on supported signature algorithms\namong others.",
@@ -2843,6 +3070,16 @@
           "x-go-name": "AuthURL",
           "example": "https://playground.ory.sh/ory-hydra/public/oauth2/auth"
         },
+        "backchannel_logout_session_supported": {
+          "description": "Boolean value specifying whether the OP can pass a sid (session ID) Claim in the Logout Token to identify the RP\nsession with the OP. If supported, the sid Claim is also included in ID Tokens issued by the OP",
+          "type": "boolean",
+          "x-go-name": "BackChannelLogoutSessionSupported"
+        },
+        "backchannel_logout_supported": {
+          "description": "Boolean value specifying whether the OP supports back-channel logout, with true indicating support.",
+          "type": "boolean",
+          "x-go-name": "BackChannelLogoutSupported"
+        },
         "claims_parameter_supported": {
           "description": "Boolean value specifying whether the OP supports use of the claims parameter, with true indicating support.",
           "type": "boolean",
@@ -2855,6 +3092,21 @@
             "type": "string"
           },
           "x-go-name": "ClaimsSupported"
+        },
+        "end_session_endpoint": {
+          "description": "URL at the OP to which an RP can perform a redirect to request that the End-User be logged out at the OP.",
+          "type": "string",
+          "x-go-name": "EndSessionEndpoint"
+        },
+        "frontchannel_logout_session_supported": {
+          "description": "Boolean value specifying whether the OP can pass iss (issuer) and sid (session ID) query parameters to identify\nthe RP session with the OP when the frontchannel_logout_uri is used. If supported, the sid Claim is also\nincluded in ID Tokens issued by the OP.",
+          "type": "boolean",
+          "x-go-name": "FrontChannelLogoutSessionSupported"
+        },
+        "frontchannel_logout_supported": {
+          "description": "Boolean value specifying whether the OP supports HTTP-based logout, with true indicating support.",
+          "type": "boolean",
+          "x-go-name": "FrontChannelLogoutSupported"
         },
         "grant_types_supported": {
           "description": "JSON array containing a list of the OAuth 2.0 Grant Type values that this OP supports.",
@@ -2921,6 +3173,11 @@
           },
           "x-go-name": "ResponseTypes"
         },
+        "revocation_endpoint": {
+          "description": "URL of the authorization server's OAuth 2.0 revocation endpoint.",
+          "type": "string",
+          "x-go-name": "RevocationEndpoint"
+        },
         "scopes_supported": {
           "description": "SON array containing a list of the OAuth 2.0 [RFC6749] scope values that this server supports. The server MUST\nsupport the openid scope value. Servers MAY choose not to advertise some supported scope values even when this parameter is used",
           "type": "array",
@@ -2975,7 +3232,7 @@
       "description": "Empty responses are sent when, for example, resources are deleted. The HTTP status code for empty responses is\ntypically 201."
     },
     "handledConsentRequestList": {
-      "description": "A list of handled consent requests.",
+      "description": "A list of used consent requests.",
       "schema": {
         "type": "array",
         "items": {

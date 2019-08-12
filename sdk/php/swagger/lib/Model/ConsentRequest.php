@@ -57,6 +57,7 @@ class ConsentRequest implements ArrayAccess
         'acr' => 'string',
         'challenge' => 'string',
         'client' => '\HydraSDK\Model\OAuth2Client',
+        'context' => 'map[string,object]',
         'login_challenge' => 'string',
         'login_session_id' => 'string',
         'oidc_context' => '\HydraSDK\Model\OpenIDConnectContext',
@@ -75,6 +76,7 @@ class ConsentRequest implements ArrayAccess
         'acr' => null,
         'challenge' => null,
         'client' => null,
+        'context' => null,
         'login_challenge' => null,
         'login_session_id' => null,
         'oidc_context' => null,
@@ -103,6 +105,7 @@ class ConsentRequest implements ArrayAccess
         'acr' => 'acr',
         'challenge' => 'challenge',
         'client' => 'client',
+        'context' => 'context',
         'login_challenge' => 'login_challenge',
         'login_session_id' => 'login_session_id',
         'oidc_context' => 'oidc_context',
@@ -122,6 +125,7 @@ class ConsentRequest implements ArrayAccess
         'acr' => 'setAcr',
         'challenge' => 'setChallenge',
         'client' => 'setClient',
+        'context' => 'setContext',
         'login_challenge' => 'setLoginChallenge',
         'login_session_id' => 'setLoginSessionId',
         'oidc_context' => 'setOidcContext',
@@ -141,6 +145,7 @@ class ConsentRequest implements ArrayAccess
         'acr' => 'getAcr',
         'challenge' => 'getChallenge',
         'client' => 'getClient',
+        'context' => 'getContext',
         'login_challenge' => 'getLoginChallenge',
         'login_session_id' => 'getLoginSessionId',
         'oidc_context' => 'getOidcContext',
@@ -185,6 +190,7 @@ class ConsentRequest implements ArrayAccess
         $this->container['acr'] = isset($data['acr']) ? $data['acr'] : null;
         $this->container['challenge'] = isset($data['challenge']) ? $data['challenge'] : null;
         $this->container['client'] = isset($data['client']) ? $data['client'] : null;
+        $this->container['context'] = isset($data['context']) ? $data['context'] : null;
         $this->container['login_challenge'] = isset($data['login_challenge']) ? $data['login_challenge'] : null;
         $this->container['login_session_id'] = isset($data['login_session_id']) ? $data['login_session_id'] : null;
         $this->container['oidc_context'] = isset($data['oidc_context']) ? $data['oidc_context'] : null;
@@ -284,6 +290,27 @@ class ConsentRequest implements ArrayAccess
     }
 
     /**
+     * Gets context
+     * @return map[string,object]
+     */
+    public function getContext()
+    {
+        return $this->container['context'];
+    }
+
+    /**
+     * Sets context
+     * @param map[string,object] $context Context contains arbitrary information set by the login endpoint or is empty if not set.
+     * @return $this
+     */
+    public function setContext($context)
+    {
+        $this->container['context'] = $context;
+
+        return $this;
+    }
+
+    /**
      * Gets login_challenge
      * @return string
      */
@@ -315,7 +342,7 @@ class ConsentRequest implements ArrayAccess
 
     /**
      * Sets login_session_id
-     * @param string $login_session_id LoginSessionID is the authentication session ID. It is set if the browser had a valid authentication session at ORY Hydra during the login flow. It can be used to associate consecutive login requests by a certain user.
+     * @param string $login_session_id LoginSessionID is the login session ID. If the user-agent reuses a login session (via cookie / remember flag) this ID will remain the same. If the user-agent did not have an existing authentication session (e.g. remember is false) this will be a new random value. This value is used as the \"sid\" parameter in the ID Token and in OIDC Front-/Back- channel logout. It's value can generally be used to associate consecutive login requests by a certain user.
      * @return $this
      */
     public function setLoginSessionId($login_session_id)

@@ -4,21 +4,26 @@
   "description": "The official JavaScript / NodeJS SDK for ORY Hydra.",
   "license": "Apache-2.0",
   "main": "sdk/js/swagger/src/index.js",
-  "scripts": {
-    "postinstall": "opencollective postinstall"
-  },
   "browser": {
     "fs": false
   },
+  "scripts": {
+    "format": "prettier --single-quote --trailing-comma none --write \"{test,cypress}/**/*.js\"",
+    "test": "cypress run",
+    "test:watch": "cypress open",
+    "wait-on": "wait-on",
+    "lint": "standard --fix \"test/**/*.js\" \"cypress/**/*.js\""
+  },
   "dependencies": {
+    "express-cli": "0.0.1",
     "superagent": "3.7.0"
   },
   "devDependencies": {
-    "opencollective": "^1.0.3"
-  },
-  "collective": {
-    "type": "opencollective",
-    "url": "https://opencollective.com/ory-hydra",
-    "logo": "https://opencollective.com/ory-hydra/logo.txt"
+    "cypress": "^3.2.0",
+    "npm-run-all": "^4.1.5",
+    "openid-client": "^2.4.5",
+    "prettier": "^1.17.0",
+    "standard": "^12.0.1",
+    "wait-on": "^3.2.0"
   }
 }

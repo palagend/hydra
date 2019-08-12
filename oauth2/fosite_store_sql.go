@@ -36,33 +36,30 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/ory/fosite"
-	"github.com/ory/go-convenience/stringsx"
 	"github.com/ory/hydra/client"
 	"github.com/ory/x/dbal"
 	"github.com/ory/x/sqlcon"
+	"github.com/ory/x/stringsx"
 )
 
 type FositeSQLStore struct {
-	client.Manager
-	DB                  *sqlx.DB
-	L                   logrus.FieldLogger
-	AccessTokenLifespan time.Duration
-	HashSignature       bool
+	DB *sqlx.DB
+
+	r InternalRegistry
+	c Configuration
+
+	HashSignature bool
 }
 
-func NewFositeSQLStore(m client.Manager,
-	db *sqlx.DB,
-	l logrus.FieldLogger,
-	accessTokenLifespan time.Duration,
-	hashSignature bool,
-) *FositeSQLStore {
-	return &FositeSQLStore{
-		Manager:             m,
-		L:                   l,
-		DB:                  db,
-		AccessTokenLifespan: accessTokenLifespan,
-		HashSignature:       hashSignature,
-	}
+type sqlxDB interface {
+	sqlx.ExecerContext
+	sqlx.Ext
+	NamedExecContext(ctx context.Context, query string, arg interface{}) (sql.Result, error)
+	GetContext(ctx context.Context, dest interface{}, query string, args ...interface{}) error
+}
+
+func NewFositeSQLStore(db *sqlx.DB, r InternalRegistry, c Configuration) *FositeSQLStore {
+	return &FositeSQLStore{r: r, c: c, DB: db}
 }
 
 const (
@@ -82,7 +79,14 @@ var Migrations = map[string]*dbal.PackrMigrationSource{
 		"migrations/sql/shared",
 		"migrations/sql/postgres",
 	}, true),
+	dbal.DriverCockroachDB: dbal.NewMustPackerMigrationSource(logrus.New(), AssetNames(), Asset, []string{
+		"migrations/sql/cockroach",
+	}, true),
 }
+
+type transactionKey int
+
+const txKey transactionKey = iota
 
 var sqlParams = []string{
 	"signature",
@@ -191,18 +195,56 @@ func (s *sqlData) toRequest(session fosite.Session, cm client.Manager, logger lo
 	return r, nil
 }
 
+func (s *FositeSQLStore) PlanMigration(dbName string) ([]*migrate.PlannedMigration, error) {
+	migrate.SetTable("hydra_oauth2_migration")
+	plan, _, err := migrate.PlanMigration(s.DB.DB, dbal.Canonicalize(s.DB.DriverName()), Migrations[dbName], migrate.Up, 0)
+	return plan, errors.WithStack(err)
+}
+
+func (s *FositeSQLStore) GetClient(ctx context.Context, id string) (fosite.Client, error) {
+	return s.r.ClientManager().GetClient(ctx, id)
+}
+
+func (s *FositeSQLStore) Authenticate(ctx context.Context, id string, secret []byte) (*client.Client, error) {
+	return s.r.ClientManager().Authenticate(ctx, id, secret)
+}
+
+func (s *FositeSQLStore) CreateClient(ctx context.Context, c *client.Client) error {
+	return s.r.ClientManager().CreateClient(ctx, c)
+
+}
+
+func (s *FositeSQLStore) UpdateClient(ctx context.Context, c *client.Client) error {
+	return s.r.ClientManager().UpdateClient(ctx, c)
+
+}
+
+func (s *FositeSQLStore) DeleteClient(ctx context.Context, id string) error {
+	return s.r.ClientManager().DeleteClient(ctx, id)
+
+}
+
+func (s *FositeSQLStore) GetClients(ctx context.Context, limit, offset int) (map[string]client.Client, error) {
+	return s.r.ClientManager().GetClients(ctx, limit, offset)
+}
+
+func (s *FositeSQLStore) GetConcreteClient(ctx context.Context, id string) (*client.Client, error) {
+	return s.r.ClientManager().GetConcreteClient(ctx, id)
+}
+
 // hashSignature prevents errors where the signature is longer than 128 characters (and thus doesn't fit into the pk).
 func (s *FositeSQLStore) hashSignature(signature, table string) string {
-	if table == sqlTableAccess && s.HashSignature {
+	if table == sqlTableAccess && s.c.IsUsingJWTAsAccessTokens() {
 		return fmt.Sprintf("%x", sha512.Sum384([]byte(signature)))
 	}
 	return signature
 }
 
 func (s *FositeSQLStore) createSession(ctx context.Context, signature string, requester fosite.Requester, table string) error {
+	db := s.db(ctx)
 	signature = s.hashSignature(signature, table)
 
-	data, err := sqlSchemaFromRequest(signature, requester, s.L)
+	data, err := sqlSchemaFromRequest(signature, requester, s.r.Logger())
 	if err != nil {
 		return err
 	}
@@ -213,22 +255,31 @@ func (s *FositeSQLStore) createSession(ctx context.Context, signature string, re
 		strings.Join(sqlParams, ", "),
 		":"+strings.Join(sqlParams, ", :"),
 	)
-	if _, err := s.DB.NamedExecContext(ctx, query, data); err != nil {
+	if _, err := db.NamedExecContext(ctx, query, data); err != nil {
 		return sqlcon.HandleError(err)
 	}
 	return nil
 }
 
+func (s *FositeSQLStore) db(ctx context.Context) sqlxDB {
+	if tx, ok := ctx.Value(txKey).(*sqlx.Tx); ok {
+		return tx
+	} else {
+		return s.DB
+	}
+}
+
 func (s *FositeSQLStore) findSessionBySignature(ctx context.Context, signature string, session fosite.Session, table string) (fosite.Requester, error) {
+	db := s.db(ctx)
 	signature = s.hashSignature(signature, table)
 
 	var d sqlData
-	if err := s.DB.GetContext(ctx, &d, s.DB.Rebind(fmt.Sprintf("SELECT * FROM hydra_oauth2_%s WHERE signature=?", table)), signature); err == sql.ErrNoRows {
+	if err := db.GetContext(ctx, &d, db.Rebind(fmt.Sprintf("SELECT * FROM hydra_oauth2_%s WHERE signature=?", table)), signature); err == sql.ErrNoRows {
 		return nil, errors.Wrap(fosite.ErrNotFound, "")
 	} else if err != nil {
 		return nil, sqlcon.HandleError(err)
 	} else if !d.Active && table == sqlTableCode {
-		if r, err := d.toRequest(session, s.Manager, s.L); err != nil {
+		if r, err := d.toRequest(session, s.r.ClientManager(), s.r.Logger()); err != nil {
 			return nil, err
 		} else {
 			return r, errors.WithStack(fosite.ErrInvalidatedAuthorizeCode)
@@ -237,21 +288,22 @@ func (s *FositeSQLStore) findSessionBySignature(ctx context.Context, signature s
 		return nil, errors.WithStack(fosite.ErrInactiveToken)
 	}
 
-	return d.toRequest(session, s.Manager, s.L)
+	return d.toRequest(session, s.r.ClientManager(), s.r.Logger())
 }
 
 func (s *FositeSQLStore) deleteSession(ctx context.Context, signature string, table string) error {
+	db := s.db(ctx)
 	signature = s.hashSignature(signature, table)
 
-	if _, err := s.DB.ExecContext(ctx, s.DB.Rebind(fmt.Sprintf("DELETE FROM hydra_oauth2_%s WHERE signature=?", table)), signature); err != nil {
+	if _, err := db.ExecContext(ctx, s.DB.Rebind(fmt.Sprintf("DELETE FROM hydra_oauth2_%s WHERE signature=?", table)), signature); err != nil {
 		return sqlcon.HandleError(err)
 	}
 	return nil
 }
 
-func (s *FositeSQLStore) CreateSchemas() (int, error) {
+func (s *FositeSQLStore) CreateSchemas(dbName string) (int, error) {
 	migrate.SetTable("hydra_oauth2_migration")
-	n, err := migrate.Exec(s.DB.DB, s.DB.DriverName(), Migrations[dbal.Canonicalize(s.DB.DriverName())], migrate.Up)
+	n, err := migrate.Exec(s.DB.DB, dbal.Canonicalize(s.DB.DriverName()), Migrations[dbName], migrate.Up)
 	if err != nil {
 		return 0, errors.Wrapf(err, "Could not migrate sql schema, applied %d migrations", n)
 	}
@@ -279,7 +331,8 @@ func (s *FositeSQLStore) GetAuthorizeCodeSession(ctx context.Context, signature 
 }
 
 func (s *FositeSQLStore) InvalidateAuthorizeCodeSession(ctx context.Context, signature string) error {
-	if _, err := s.DB.ExecContext(ctx, s.DB.Rebind(fmt.Sprintf(
+	db := s.db(ctx)
+	if _, err := db.ExecContext(ctx, db.Rebind(fmt.Sprintf(
 		"UPDATE hydra_oauth2_%s SET active=false WHERE signature=?",
 		sqlTableCode,
 	)), signature); err != nil {
@@ -338,7 +391,8 @@ func (s *FositeSQLStore) RevokeAccessToken(ctx context.Context, id string) error
 }
 
 func (s *FositeSQLStore) revokeSession(ctx context.Context, id string, table string) error {
-	if _, err := s.DB.ExecContext(ctx, s.DB.Rebind(fmt.Sprintf("DELETE FROM hydra_oauth2_%s WHERE request_id=?", table)), id); err == sql.ErrNoRows {
+	db := s.db(ctx)
+	if _, err := db.ExecContext(ctx, db.Rebind(fmt.Sprintf("DELETE FROM hydra_oauth2_%s WHERE request_id=?", table)), id); err == sql.ErrNoRows {
 		return errors.Wrap(fosite.ErrNotFound, "")
 	} else if err != nil {
 		return sqlcon.HandleError(err)
@@ -347,11 +401,35 @@ func (s *FositeSQLStore) revokeSession(ctx context.Context, id string, table str
 }
 
 func (s *FositeSQLStore) FlushInactiveAccessTokens(ctx context.Context, notAfter time.Time) error {
-	if _, err := s.DB.ExecContext(ctx, s.DB.Rebind(fmt.Sprintf("DELETE FROM hydra_oauth2_%s WHERE requested_at < ? AND requested_at < ?", sqlTableAccess)), time.Now().Add(-s.AccessTokenLifespan), notAfter); err == sql.ErrNoRows {
+	if _, err := s.DB.ExecContext(ctx, s.DB.Rebind(fmt.Sprintf("DELETE FROM hydra_oauth2_%s WHERE requested_at < ? AND requested_at < ?", sqlTableAccess)), time.Now().Add(-s.c.AccessTokenLifespan()), notAfter); err == sql.ErrNoRows {
 		return errors.Wrap(fosite.ErrNotFound, "")
 	} else if err != nil {
 		return sqlcon.HandleError(err)
 	}
 
 	return nil
+}
+
+func (s *FositeSQLStore) BeginTX(ctx context.Context) (context.Context, error) {
+	if tx, err := s.DB.BeginTxx(ctx, nil); err != nil {
+		return ctx, err
+	} else {
+		return context.WithValue(ctx, txKey, tx), nil
+	}
+}
+
+func (s *FositeSQLStore) Commit(ctx context.Context) error {
+	if tx, ok := ctx.Value(txKey).(*sqlx.Tx); !ok {
+		return errors.Wrap(fosite.ErrServerError, "commit failed: no transaction stored in context")
+	} else {
+		return tx.Commit()
+	}
+}
+
+func (s *FositeSQLStore) Rollback(ctx context.Context) error {
+	if tx, ok := ctx.Value(txKey).(*sqlx.Tx); !ok {
+		return errors.Wrap(fosite.ErrServerError, "rollback failed: no transaction stored in context")
+	} else {
+		return tx.Rollback()
+	}
 }

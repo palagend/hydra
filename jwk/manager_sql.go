@@ -31,21 +31,21 @@ import (
 	"github.com/sirupsen/logrus"
 	jose "gopkg.in/square/go-jose.v2"
 
-	"github.com/ory/hydra/pkg"
+	"github.com/ory/hydra/x"
 	"github.com/ory/x/dbal"
 	"github.com/ory/x/sqlcon"
 )
 
 type SQLManager struct {
-	DB     *sqlx.DB
-	Cipher *AEAD
+	DB *sqlx.DB
+	R  InternalRegistry
 }
 
-func NewSQLManager(db *sqlx.DB, key []byte) *SQLManager {
-	return &SQLManager{DB: db, Cipher: &AEAD{Key: key}}
+func NewSQLManager(db *sqlx.DB, r InternalRegistry) *SQLManager {
+	return &SQLManager{DB: db, R: r}
 }
 
-var migrations = map[string]*dbal.PackrMigrationSource{
+var Migrations = map[string]*dbal.PackrMigrationSource{
 	dbal.DriverMySQL: dbal.NewMustPackerMigrationSource(logrus.New(), AssetNames(), Asset, []string{
 		"migrations/sql/shared",
 		"migrations/sql/mysql",
@@ -53,6 +53,9 @@ var migrations = map[string]*dbal.PackrMigrationSource{
 	dbal.DriverPostgreSQL: dbal.NewMustPackerMigrationSource(logrus.New(), AssetNames(), Asset, []string{
 		"migrations/sql/shared",
 		"migrations/sql/postgres",
+	}, true),
+	dbal.DriverCockroachDB: dbal.NewMustPackerMigrationSource(logrus.New(), AssetNames(), Asset, []string{
+		"migrations/sql/cockroach",
 	}, true),
 }
 
@@ -65,15 +68,15 @@ type sqlData struct {
 	Key       string    `db:"keydata"`
 }
 
-func (m *SQLManager) CreateSchemas() (int, error) {
-	database := m.DB.DriverName()
-	switch database {
-	case "pgx", "pq":
-		database = "postgres"
-	}
-
+func (m *SQLManager) PlanMigration(dbName string) ([]*migrate.PlannedMigration, error) {
 	migrate.SetTable("hydra_jwk_migration")
-	n, err := migrate.Exec(m.DB.DB, m.DB.DriverName(), migrations[database], migrate.Up)
+	plan, _, err := migrate.PlanMigration(m.DB.DB, dbal.Canonicalize(m.DB.DriverName()), Migrations[dbName], migrate.Up, 0)
+	return plan, errors.WithStack(err)
+}
+
+func (m *SQLManager) CreateSchemas(dbName string) (int, error) {
+	migrate.SetTable("hydra_jwk_migration")
+	n, err := migrate.Exec(m.DB.DB, dbal.Canonicalize(m.DB.DriverName()), Migrations[dbName], migrate.Up)
 	if err != nil {
 		return 0, errors.Wrapf(err, "Could not migrate sql schema, applied %d migrations", n)
 	}
@@ -86,7 +89,7 @@ func (m *SQLManager) AddKey(ctx context.Context, set string, key *jose.JSONWebKe
 		return errors.WithStack(err)
 	}
 
-	encrypted, err := m.Cipher.Encrypt(out)
+	encrypted, err := m.R.KeyCipher().Encrypt(out)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -108,7 +111,7 @@ func (m *SQLManager) AddKeySet(ctx context.Context, set string, keys *jose.JSONW
 		return errors.WithStack(err)
 	}
 
-	if err := m.addKeySet(ctx, tx, m.Cipher, set, keys); err != nil {
+	if err := m.addKeySet(ctx, tx, m.R.KeyCipher(), set, keys); err != nil {
 		if re := tx.Rollback(); re != nil {
 			return errors.Wrap(err, re.Error())
 		}
@@ -155,7 +158,7 @@ func (m *SQLManager) GetKey(ctx context.Context, set, kid string) (*jose.JSONWeb
 		return nil, sqlcon.HandleError(err)
 	}
 
-	key, err := m.Cipher.Decrypt(d.Key)
+	key, err := m.R.KeyCipher().Decrypt(d.Key)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -177,12 +180,12 @@ func (m *SQLManager) GetKeySet(ctx context.Context, set string) (*jose.JSONWebKe
 	}
 
 	if len(ds) == 0 {
-		return nil, errors.Wrap(pkg.ErrNotFound, "")
+		return nil, errors.Wrap(x.ErrNotFound, "")
 	}
 
 	keys := &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{}}
 	for _, d := range ds {
-		key, err := m.Cipher.Decrypt(d.Key)
+		key, err := m.R.KeyCipher().Decrypt(d.Key)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
@@ -195,7 +198,7 @@ func (m *SQLManager) GetKeySet(ctx context.Context, set string) (*jose.JSONWebKe
 	}
 
 	if len(keys.Keys) == 0 {
-		return nil, errors.WithStack(pkg.ErrNotFound)
+		return nil, errors.WithStack(x.ErrNotFound)
 	}
 
 	return keys, nil
@@ -232,51 +235,6 @@ func (m *SQLManager) DeleteKeySet(ctx context.Context, set string) error {
 
 func (m *SQLManager) deleteKeySet(ctx context.Context, tx *sqlx.Tx, set string) error {
 	if _, err := tx.ExecContext(ctx, m.DB.Rebind(`DELETE FROM hydra_jwk WHERE sid=?`), set); err != nil {
-		return sqlcon.HandleError(err)
-	}
-	return nil
-}
-
-func (m *SQLManager) RotateKeys(ctx context.Context, new *AEAD) error {
-	sids := make([]string, 0)
-	if err := m.DB.Select(&sids, "SELECT sid FROM hydra_jwk GROUP BY sid"); err != nil {
-		return sqlcon.HandleError(err)
-	}
-
-	sets := make([]jose.JSONWebKeySet, 0)
-	for _, sid := range sids {
-		set, err := m.GetKeySet(ctx, sid)
-		if err != nil {
-			return errors.WithStack(err)
-		}
-		sets = append(sets, *set)
-	}
-
-	tx, err := m.DB.Beginx()
-	if err != nil {
-		return errors.WithStack(err)
-	}
-
-	for k, set := range sets {
-		if err := m.deleteKeySet(ctx, tx, sids[k]); err != nil {
-			if re := tx.Rollback(); re != nil {
-				return errors.Wrap(err, re.Error())
-			}
-			return sqlcon.HandleError(err)
-		}
-
-		if err := m.addKeySet(ctx, tx, new, sids[k], &set); err != nil {
-			if re := tx.Rollback(); re != nil {
-				return errors.Wrap(err, re.Error())
-			}
-			return sqlcon.HandleError(err)
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		if re := tx.Rollback(); re != nil {
-			return errors.Wrap(err, re.Error())
-		}
 		return sqlcon.HandleError(err)
 	}
 	return nil

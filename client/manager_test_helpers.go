@@ -28,7 +28,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	jose "gopkg.in/square/go-jose.v2"
+	"gopkg.in/square/go-jose.v2"
 
 	"github.com/ory/fosite"
 )
@@ -36,7 +36,6 @@ import (
 func TestHelperClientAutoGenerateKey(k string, m Storage) func(t *testing.T) {
 	return func(t *testing.T) {
 		ctx := context.TODO()
-		t.Parallel()
 		c := &Client{
 			ClientID:          "foo",
 			Secret:            "secret",
@@ -52,7 +51,6 @@ func TestHelperClientAutoGenerateKey(k string, m Storage) func(t *testing.T) {
 func TestHelperClientAuthenticate(k string, m Manager) func(t *testing.T) {
 	return func(t *testing.T) {
 		ctx := context.TODO()
-		t.Parallel()
 		m.CreateClient(ctx, &Client{
 			ClientID:     "1234321",
 			Secret:       "secret",
@@ -70,36 +68,40 @@ func TestHelperClientAuthenticate(k string, m Manager) func(t *testing.T) {
 
 func TestHelperCreateGetDeleteClient(k string, m Storage) func(t *testing.T) {
 	return func(t *testing.T) {
-		t.Parallel()
 		ctx := context.TODO()
 		_, err := m.GetClient(ctx, "4321")
 		assert.NotNil(t, err)
 
 		c := &Client{
-			ClientID:                      "1234",
-			Name:                          "name",
-			Secret:                        "secret",
-			RedirectURIs:                  []string{"http://redirect", "http://redirect1"},
-			GrantTypes:                    []string{"implicit", "refresh_token"},
-			ResponseTypes:                 []string{"code token", "token id_token", "code"},
-			Scope:                         "scope-a scope-b",
-			Owner:                         "aeneas",
-			PolicyURI:                     "http://policy",
-			TermsOfServiceURI:             "http://tos",
-			ClientURI:                     "http://client",
-			LogoURI:                       "http://logo",
-			Contacts:                      []string{"aeneas1", "aeneas2"},
-			SecretExpiresAt:               0,
-			SectorIdentifierURI:           "https://sector",
-			JSONWebKeys:                   &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{KeyID: "foo", Key: []byte("asdf"), Certificates: []*x509.Certificate{}}}},
-			JSONWebKeysURI:                "https://...",
-			TokenEndpointAuthMethod:       "none",
-			RequestURIs:                   []string{"foo", "bar"},
-			AllowedCORSOrigins:            []string{"foo", "bar"},
-			RequestObjectSigningAlgorithm: "rs256",
-			UserinfoSignedResponseAlg:     "RS256",
-			CreatedAt:                     time.Now().Add(-time.Hour).Round(time.Second).UTC(),
-			UpdatedAt:                     time.Now().Add(-time.Minute).Round(time.Second).UTC(),
+			ClientID:                          "1234",
+			Name:                              "name",
+			Secret:                            "secret",
+			RedirectURIs:                      []string{"http://redirect", "http://redirect1"},
+			GrantTypes:                        []string{"implicit", "refresh_token"},
+			ResponseTypes:                     []string{"code token", "token id_token", "code"},
+			Scope:                             "scope-a scope-b",
+			Owner:                             "aeneas",
+			PolicyURI:                         "http://policy",
+			TermsOfServiceURI:                 "http://tos",
+			ClientURI:                         "http://client",
+			LogoURI:                           "http://logo",
+			Contacts:                          []string{"aeneas1", "aeneas2"},
+			SecretExpiresAt:                   0,
+			SectorIdentifierURI:               "https://sector",
+			JSONWebKeys:                       &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{KeyID: "foo", Key: []byte("asdf"), Certificates: []*x509.Certificate{}}}},
+			JSONWebKeysURI:                    "https://...",
+			TokenEndpointAuthMethod:           "none",
+			RequestURIs:                       []string{"foo", "bar"},
+			AllowedCORSOrigins:                []string{"foo", "bar"},
+			RequestObjectSigningAlgorithm:     "rs256",
+			UserinfoSignedResponseAlg:         "RS256",
+			CreatedAt:                         time.Now().Add(-time.Hour).Round(time.Second).UTC(),
+			UpdatedAt:                         time.Now().Add(-time.Minute).Round(time.Second).UTC(),
+			FrontChannelLogoutURI:             "http://fc-logout",
+			FrontChannelLogoutSessionRequired: true,
+			PostLogoutRedirectURIs:            []string{"hello", "mister"},
+			BackChannelLogoutURI:              "http://bc-logout",
+			BackChannelLogoutSessionRequired:  true,
 		}
 
 		assert.NoError(t, m.CreateClient(ctx, c))
@@ -127,7 +129,6 @@ func TestHelperCreateGetDeleteClient(k string, m Storage) func(t *testing.T) {
 		assert.Len(t, ds, 2)
 		assert.NotEqual(t, ds["1234"].ClientID, ds["2-1234"].ClientID)
 		assert.NotEqual(t, ds["1234"].ClientID, ds["2-1234"].ClientID)
-
 		//test if SecretExpiresAt was set properly
 		assert.Equal(t, ds["1234"].SecretExpiresAt, 0)
 		assert.Equal(t, ds["2-1234"].SecretExpiresAt, 1)
@@ -138,7 +139,6 @@ func TestHelperCreateGetDeleteClient(k string, m Storage) func(t *testing.T) {
 
 		ds, err = m.GetClients(ctx, 100, 100)
 		assert.NoError(t, err)
-		assert.Len(t, ds, 0)
 
 		err = m.UpdateClient(ctx, &Client{
 			ClientID:          "2-1234",
@@ -166,6 +166,10 @@ func TestHelperCreateGetDeleteClient(k string, m Storage) func(t *testing.T) {
 
 		_, err = m.GetClient(ctx, "1234")
 		assert.NotNil(t, err)
+
+		n, err := m.CountClients(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, n)
 	}
 }
 
@@ -194,6 +198,11 @@ func compare(t *testing.T, expected *Client, actual fosite.Client, k string) {
 		assert.EqualValues(t, expected.UserinfoSignedResponseAlg, actual.UserinfoSignedResponseAlg)
 		assert.EqualValues(t, expected.CreatedAt.Unix(), actual.CreatedAt.Unix())
 		assert.EqualValues(t, expected.UpdatedAt.Unix(), actual.UpdatedAt.Unix())
+		assert.EqualValues(t, expected.FrontChannelLogoutURI, actual.FrontChannelLogoutURI)
+		assert.EqualValues(t, expected.FrontChannelLogoutSessionRequired, actual.FrontChannelLogoutSessionRequired)
+		assert.EqualValues(t, expected.PostLogoutRedirectURIs, actual.PostLogoutRedirectURIs)
+		assert.EqualValues(t, expected.BackChannelLogoutURI, actual.BackChannelLogoutURI)
+		assert.EqualValues(t, expected.BackChannelLogoutSessionRequired, actual.BackChannelLogoutSessionRequired)
 	}
 
 	if actual, ok := actual.(fosite.OpenIDConnectClient); ok {

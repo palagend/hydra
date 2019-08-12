@@ -33,7 +33,7 @@ It is recommended to run this command close to the SQL instance (e.g. same subne
 This decreases risk of failure and decreases time required.
 
 You can read in the database URL using the -e flag, for example:
-	export DATABASE_URL=...
+	export DSN=...
 	hydra migrate sql -e
 
 ### WARNING ###
@@ -46,5 +46,6 @@ Before running this command on an existing database, create a back up!
 func init() {
 	migrateCmd.AddCommand(migrateSqlCmd)
 
-	migrateSqlCmd.Flags().BoolP("read-from-env", "e", false, "If set, reads the database URL from the environment variable DATABASE_URL.")
+	migrateSqlCmd.Flags().BoolP("read-from-env", "e", false, "If set, reads the database connection string from the environment variable DSN or config file key dsn.")
+	migrateSqlCmd.Flags().BoolP("yes", "y", false, "If set all confirmation requests are accepted without user interaction.")
 }

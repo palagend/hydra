@@ -27,6 +27,10 @@ import (
 	"github.com/ory/hydra/client"
 )
 
+const (
+	requestDeniedErrorName = "consent request denied"
+)
+
 // The response payload sent when accepting or rejecting a login or consent request.
 //
 // swagger:model completedRequest
@@ -35,10 +39,12 @@ type RequestHandlerResponse struct {
 	RedirectTo string `json:"redirect_to"`
 }
 
-type AuthenticationSession struct {
+// swagger:ignore
+type LoginSession struct {
 	ID              string    `db:"id"`
 	AuthenticatedAt time.Time `db:"authenticated_at"`
 	Subject         string    `db:"subject"`
+	Remember        bool      `db:"remember"`
 }
 
 // The request payload used to accept a login or consent request.
@@ -54,19 +60,11 @@ type RequestDeniedError struct {
 
 func (e *RequestDeniedError) toRFCError() *fosite.RFC6749Error {
 	if e.Name == "" {
-		e.Name = fosite.ErrInvalidRequest.Name
+		e.Name = requestDeniedErrorName
 	}
+
 	if e.Code == 0 {
 		e.Code = fosite.ErrInvalidRequest.Code
-	}
-	if e.Description == "" {
-		e.Description = fosite.ErrInvalidRequest.Description
-	}
-	if e.Hint == "" {
-		e.Hint = fosite.ErrInvalidRequest.Hint
-	}
-	if e.Debug == "" {
-		e.Debug = fosite.ErrInvalidRequest.Debug
 	}
 
 	return &fosite.RFC6749Error{
@@ -107,8 +105,8 @@ type HandledConsentRequest struct {
 	WasUsed         bool                `json:"-"`
 }
 
-// The response used to return handled consent requests
-// same as HandledAuthenticationRequest, just with consent_request exposed as json
+// The response used to return used consent requests
+// same as HandledLoginRequest, just with consent_request exposed as json
 type PreviousConsentSession struct {
 	// GrantScope sets the scope the user authorized the client to use. Should be a subset of `requested_scope`
 	GrantedScope []string `json:"grant_scope"`
@@ -135,10 +133,10 @@ type PreviousConsentSession struct {
 	WasUsed         bool                `json:"-"`
 }
 
-// The request payload used to accept a login request.
+// HandledLoginRequest is the request payload used to accept a login request.
 //
 // swagger:model acceptLoginRequest
-type HandledAuthenticationRequest struct {
+type HandledLoginRequest struct {
 	// Remember, if set to true, tells ORY Hydra to remember this user by telling the user agent (browser) to store
 	// a cookie with authentication data. If the same user performs another OAuth 2.0 Authorization Request, he/she
 	// will not be asked to log in again.
@@ -153,6 +151,7 @@ type HandledAuthenticationRequest struct {
 	ACR string `json:"acr"`
 
 	// Subject is the user ID of the end-user that authenticated.
+	// required: true
 	Subject string `json:"subject"`
 
 	// ForceSubjectIdentifier forces the "pairwise" user ID of the end-user that authenticated. The "pairwise" user ID refers to the
@@ -174,12 +173,17 @@ type HandledAuthenticationRequest struct {
 	// If you fail to compute the proper value, then authentication processes which have id_token_hint set might fail.
 	ForceSubjectIdentifier string `json:"force_subject_identifier"`
 
-	AuthenticationRequest *AuthenticationRequest `json:"-"`
-	Error                 *RequestDeniedError    `json:"-"`
-	Challenge             string                 `json:"-"`
-	RequestedAt           time.Time              `json:"-"`
-	AuthenticatedAt       time.Time              `json:"-"`
-	WasUsed               bool                   `json:"-"`
+	// Context is an optional object which can hold arbitrary data. The data will be made available when fetching the
+	// consent request under the "context" field. This is useful in scenarios where login and consent endpoints share
+	// data.
+	Context map[string]interface{} `json:"context"`
+
+	LoginRequest    *LoginRequest       `json:"-"`
+	Error           *RequestDeniedError `json:"-"`
+	Challenge       string              `json:"-"`
+	RequestedAt     time.Time           `json:"-"`
+	AuthenticatedAt time.Time           `json:"-"`
+	WasUsed         bool                `json:"-"`
 }
 
 // Contains optional information about the OpenID Connect request.
@@ -225,11 +229,46 @@ type OpenIDConnectContext struct {
 	LoginHint string `json:"login_hint,omitempty"`
 }
 
+// Contains information about an ongoing logout request.
+//
+// swagger:model logoutRequest
+type LogoutRequest struct {
+	// Challenge is the identifier ("logout challenge") of the logout authentication request. It is used to
+	// identify the session.
+	Challenge string `json:"-"`
+
+	// Subject is the user for whom the logout was request.
+	Subject string `json:"subject"`
+
+	// SessionID is the login session ID that was requested to log out.
+	SessionID string `json:"sid,omitempty"`
+
+	// RequestURL is the original Logout URL requested.
+	RequestURL string `json:"request_url"`
+
+	// RPInitiated is set to true if the request was initiated by a Relying Party (RP), also known as an OAuth 2.0 Client.
+	RPInitiated bool `json:"rp_initiated"`
+
+	Verifier              string         `json:"-"`
+	PostLogoutRedirectURI string         `json:"-"`
+	WasUsed               bool           `json:"-"`
+	Accepted              bool           `json:"-"`
+	Client                *client.Client `json:"-"`
+}
+
+// Returned when the log out request was used.
+//
+// swagger:ignore
+type LogoutResult struct {
+	RedirectTo             string
+	FrontChannelLogoutURLs []string
+}
+
 // Contains information on an ongoing login request.
 //
 // swagger:model loginRequest
-type AuthenticationRequest struct {
-	// Challenge is the identifier ("authentication challenge") of the consent authentication request. It is used to
+type LoginRequest struct {
+	// Challenge is the identifier ("login challenge") of the login request. It is used to
 	// identify the session.
 	Challenge string `json:"challenge"`
 
@@ -262,8 +301,10 @@ type AuthenticationRequest struct {
 	// might come in handy if you want to deal with additional request parameters.
 	RequestURL string `json:"request_url"`
 
-	// SessionID is the authentication session ID. It is set if the browser had a valid authentication session at
-	// ORY Hydra during the login flow. It can be used to associate consecutive login requests by a certain user.
+	// SessionID is the login session ID. If the user-agent reuses a login session (via cookie / remember flag)
+	// this ID will remain the same. If the user-agent did not have an existing authentication session (e.g. remember is false)
+	// this will be a new random value. This value is used as the "sid" parameter in the ID Token and in OIDC Front-/Back-
+	// channel logout. It's value can generally be used to associate consecutive login requests by a certain user.
 	SessionID string `json:"session_id"`
 
 	ForceSubjectIdentifier string    `json:"-"` // this is here but has no meaning apart from sql_helper working properly.
@@ -313,13 +354,18 @@ type ConsentRequest struct {
 	// a login and consent request in the login & consent app.
 	LoginChallenge string `json:"login_challenge"`
 
-	// LoginSessionID is the authentication session ID. It is set if the browser had a valid authentication session at
-	// ORY Hydra during the login flow. It can be used to associate consecutive login requests by a certain user.
+	// LoginSessionID is the login session ID. If the user-agent reuses a login session (via cookie / remember flag)
+	// this ID will remain the same. If the user-agent did not have an existing authentication session (e.g. remember is false)
+	// this will be a new random value. This value is used as the "sid" parameter in the ID Token and in OIDC Front-/Back-
+	// channel logout. It's value can generally be used to associate consecutive login requests by a certain user.
 	LoginSessionID string `json:"login_session_id"`
 
 	// ACR represents the Authentication AuthorizationContext Class Reference value for this authentication session. You can use it
 	// to express that, for example, a user authenticated using two factor authentication.
 	ACR string `json:"acr"`
+
+	// Context contains arbitrary information set by the login endpoint or is empty if not set.
+	Context map[string]interface{} `json:"context,omitempty"`
 
 	// ForceSubjectIdentifier is the value from authentication (if set).
 	ForceSubjectIdentifier string    `json:"-"`
@@ -348,7 +394,7 @@ type ConsentRequestSessionData struct {
 	//UserInfo map[string]interface{} `json:"userinfo"`
 }
 
-func newConsentRequestSessionData() *ConsentRequestSessionData {
+func NewConsentRequestSessionData() *ConsentRequestSessionData {
 	return &ConsentRequestSessionData{
 		AccessToken: map[string]interface{}{},
 		IDToken:     map[string]interface{}{},

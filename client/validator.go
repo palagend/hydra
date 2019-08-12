@@ -31,29 +31,26 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/ory/fosite"
-	"github.com/ory/go-convenience/stringslice"
-	"github.com/ory/go-convenience/stringsx"
+	"github.com/ory/x/stringslice"
+	"github.com/ory/x/stringsx"
 )
 
 type Validator struct {
-	c                   *http.Client
-	DefaultClientScopes []string
-	SubjectTypes        []string
+	c    *http.Client
+	conf Configuration
 }
 
-func NewValidator(defaultClientScopes, subjectTypes []string) *Validator {
-	if len(subjectTypes) == 0 {
-		subjectTypes = []string{"public"}
-	}
-
-	subjectTypes = stringslice.Filter(subjectTypes, func(s string) bool {
-		return !(s == "public" || s == "pairwise")
-	})
-
+func NewValidator(conf Configuration) *Validator {
 	return &Validator{
-		c:                   http.DefaultClient,
-		DefaultClientScopes: defaultClientScopes,
-		SubjectTypes:        subjectTypes,
+		c:    http.DefaultClient,
+		conf: conf,
+	}
+}
+
+func NewValidatorWithClient(conf Configuration, client *http.Client) *Validator {
+	return &Validator{
+		c:    client,
+		conf: conf,
 	}
 }
 
@@ -78,7 +75,7 @@ func (v *Validator) Validate(c *Client) error {
 	}
 
 	if len(c.Scope) == 0 {
-		c.Scope = strings.Join(v.DefaultClientScopes, " ")
+		c.Scope = strings.Join(v.conf.DefaultClientScope(), " ")
 	}
 
 	for k, origin := range c.AllowedCORSOrigins {
@@ -107,7 +104,7 @@ func (v *Validator) Validate(c *Client) error {
 	c.SecretExpiresAt = 0
 
 	if len(c.SectorIdentifierURI) > 0 {
-		if err := v.validateSectorIdentifierURL(c.SectorIdentifierURI, c.GetRedirectURIs()); err != nil {
+		if err := v.ValidateSectorIdentifierURL(c.SectorIdentifierURI, c.GetRedirectURIs()); err != nil {
 			return err
 		}
 	}
@@ -120,28 +117,57 @@ func (v *Validator) Validate(c *Client) error {
 		return errors.WithStack(fosite.ErrInvalidRequest.WithHint("Field userinfo_signed_response_alg can either be \"none\" or \"RS256\"."))
 	}
 
+	var redirs []url.URL
 	for _, r := range c.RedirectURIs {
+		u, err := url.ParseRequestURI(r)
+		if err != nil {
+			return errors.WithStack(fosite.ErrInvalidRequest.WithHintf("Unable to parse redirect URL: %s", r))
+		}
+		redirs = append(redirs, *u)
+
 		if strings.Contains(r, "#") {
 			return errors.WithStack(fosite.ErrInvalidRequest.WithHint("Redirect URIs must not contain fragments (#)"))
 		}
 	}
 
 	if c.SubjectType != "" {
-		if !stringslice.Has(v.SubjectTypes, c.SubjectType) {
-			return errors.WithStack(fosite.ErrInvalidRequest.WithHint(fmt.Sprintf("Subject type %s is not supported by server, only %v are allowed.", c.SubjectType, v.SubjectTypes)))
+		if !stringslice.Has(v.conf.SubjectTypesSupported(), c.SubjectType) {
+			return errors.WithStack(fosite.ErrInvalidRequest.WithHint(fmt.Sprintf("Subject type %s is not supported by server, only %v are allowed.", c.SubjectType, v.conf.SubjectTypesSupported())))
 		}
 	} else {
-		if stringslice.Has(v.SubjectTypes, "public") {
+		if stringslice.Has(v.conf.SubjectTypesSupported(), "public") {
 			c.SubjectType = "public"
 		} else {
-			c.SubjectType = v.SubjectTypes[0]
+			c.SubjectType = v.conf.SubjectTypesSupported()[0]
+		}
+	}
+
+	for _, l := range c.PostLogoutRedirectURIs {
+		u, err := url.ParseRequestURI(l)
+		if err != nil {
+			return errors.WithStack(fosite.ErrInvalidRequest.WithHintf("Unable to parse post_logout_redirect_uri: %s", l))
+		}
+
+		var found bool
+		for _, r := range redirs {
+			if r.Hostname() == u.Hostname() &&
+				r.Port() == u.Port() &&
+				r.Scheme == u.Scheme {
+				found = true
+			}
+		}
+
+		if !found {
+			return errors.WithStack(fosite.ErrInvalidRequest.
+				WithHintf(`post_logout_redirect_uri "%s" must match the domain, port, scheme of at least one of the registered redirect URIs but did not'`, l),
+			)
 		}
 	}
 
 	return nil
 }
 
-func (v *Validator) validateSectorIdentifierURL(location string, redirectURIs []string) error {
+func (v *Validator) ValidateSectorIdentifierURL(location string, redirectURIs []string) error {
 	l, err := url.Parse(location)
 	if err != nil {
 		return errors.WithStack(fosite.ErrInvalidRequest.WithHint(fmt.Sprintf("Value of sector_identifier_uri could not be parsed: %s", err)))

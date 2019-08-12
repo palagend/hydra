@@ -94,14 +94,14 @@ class AdminApi
      *
      * Client for Hydra
      *
-     * @param string $challenge  (required)
+     * @param string $consent_challenge  (required)
      * @param \HydraSDK\Model\AcceptConsentRequest $body  (optional)
      * @throws \HydraSDK\ApiException on non-2xx response
      * @return \HydraSDK\Model\CompletedRequest
      */
-    public function acceptConsentRequest($challenge, $body = null)
+    public function acceptConsentRequest($consent_challenge, $body = null)
     {
-        list($response) = $this->acceptConsentRequestWithHttpInfo($challenge, $body);
+        list($response) = $this->acceptConsentRequestWithHttpInfo($consent_challenge, $body);
         return $response;
     }
 
@@ -112,19 +112,19 @@ class AdminApi
      *
      * Client for Hydra
      *
-     * @param string $challenge  (required)
+     * @param string $consent_challenge  (required)
      * @param \HydraSDK\Model\AcceptConsentRequest $body  (optional)
      * @throws \HydraSDK\ApiException on non-2xx response
      * @return array of \HydraSDK\Model\CompletedRequest, HTTP status code, HTTP response headers (array of strings)
      */
-    public function acceptConsentRequestWithHttpInfo($challenge, $body = null)
+    public function acceptConsentRequestWithHttpInfo($consent_challenge, $body = null)
     {
-        // verify the required parameter 'challenge' is set
-        if ($challenge === null) {
-            throw new \InvalidArgumentException('Missing the required parameter $challenge when calling acceptConsentRequest');
+        // verify the required parameter 'consent_challenge' is set
+        if ($consent_challenge === null) {
+            throw new \InvalidArgumentException('Missing the required parameter $consent_challenge when calling acceptConsentRequest');
         }
         // parse inputs
-        $resourcePath = "/oauth2/auth/requests/consent/{challenge}/accept";
+        $resourcePath = "/oauth2/auth/requests/consent/accept";
         $httpBody = '';
         $queryParams = [];
         $headerParams = [];
@@ -135,13 +135,9 @@ class AdminApi
         }
         $headerParams['Content-Type'] = $this->apiClient->selectHeaderContentType(['application/json']);
 
-        // path params
-        if ($challenge !== null) {
-            $resourcePath = str_replace(
-                "{" . "challenge" . "}",
-                $this->apiClient->getSerializer()->toPathValue($challenge),
-                $resourcePath
-            );
+        // query params
+        if ($consent_challenge !== null) {
+            $queryParams['consent_challenge'] = $this->apiClient->getSerializer()->toQueryValue($consent_challenge);
         }
         // body params
         $_tempBody = null;
@@ -164,7 +160,7 @@ class AdminApi
                 $httpBody,
                 $headerParams,
                 '\HydraSDK\Model\CompletedRequest',
-                '/oauth2/auth/requests/consent/{challenge}/accept'
+                '/oauth2/auth/requests/consent/accept'
             );
 
             return [$this->apiClient->getSerializer()->deserialize($response, '\HydraSDK\Model\CompletedRequest', $httpHeader), $statusCode, $httpHeader];
@@ -174,7 +170,7 @@ class AdminApi
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\CompletedRequest', $e->getResponseHeaders());
                     $e->setResponseObject($data);
                     break;
-                case 401:
+                case 404:
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
                     $e->setResponseObject($data);
                     break;
@@ -195,14 +191,14 @@ class AdminApi
      *
      * Client for Hydra
      *
-     * @param string $challenge  (required)
+     * @param string $login_challenge  (required)
      * @param \HydraSDK\Model\AcceptLoginRequest $body  (optional)
      * @throws \HydraSDK\ApiException on non-2xx response
      * @return \HydraSDK\Model\CompletedRequest
      */
-    public function acceptLoginRequest($challenge, $body = null)
+    public function acceptLoginRequest($login_challenge, $body = null)
     {
-        list($response) = $this->acceptLoginRequestWithHttpInfo($challenge, $body);
+        list($response) = $this->acceptLoginRequestWithHttpInfo($login_challenge, $body);
         return $response;
     }
 
@@ -213,19 +209,19 @@ class AdminApi
      *
      * Client for Hydra
      *
-     * @param string $challenge  (required)
+     * @param string $login_challenge  (required)
      * @param \HydraSDK\Model\AcceptLoginRequest $body  (optional)
      * @throws \HydraSDK\ApiException on non-2xx response
      * @return array of \HydraSDK\Model\CompletedRequest, HTTP status code, HTTP response headers (array of strings)
      */
-    public function acceptLoginRequestWithHttpInfo($challenge, $body = null)
+    public function acceptLoginRequestWithHttpInfo($login_challenge, $body = null)
     {
-        // verify the required parameter 'challenge' is set
-        if ($challenge === null) {
-            throw new \InvalidArgumentException('Missing the required parameter $challenge when calling acceptLoginRequest');
+        // verify the required parameter 'login_challenge' is set
+        if ($login_challenge === null) {
+            throw new \InvalidArgumentException('Missing the required parameter $login_challenge when calling acceptLoginRequest');
         }
         // parse inputs
-        $resourcePath = "/oauth2/auth/requests/login/{challenge}/accept";
+        $resourcePath = "/oauth2/auth/requests/login/accept";
         $httpBody = '';
         $queryParams = [];
         $headerParams = [];
@@ -236,13 +232,9 @@ class AdminApi
         }
         $headerParams['Content-Type'] = $this->apiClient->selectHeaderContentType(['application/json']);
 
-        // path params
-        if ($challenge !== null) {
-            $resourcePath = str_replace(
-                "{" . "challenge" . "}",
-                $this->apiClient->getSerializer()->toPathValue($challenge),
-                $resourcePath
-            );
+        // query params
+        if ($login_challenge !== null) {
+            $queryParams['login_challenge'] = $this->apiClient->getSerializer()->toQueryValue($login_challenge);
         }
         // body params
         $_tempBody = null;
@@ -265,7 +257,7 @@ class AdminApi
                 $httpBody,
                 $headerParams,
                 '\HydraSDK\Model\CompletedRequest',
-                '/oauth2/auth/requests/login/{challenge}/accept'
+                '/oauth2/auth/requests/login/accept'
             );
 
             return [$this->apiClient->getSerializer()->deserialize($response, '\HydraSDK\Model\CompletedRequest', $httpHeader), $statusCode, $httpHeader];
@@ -276,6 +268,100 @@ class AdminApi
                     $e->setResponseObject($data);
                     break;
                 case 401:
+                    $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
+                    $e->setResponseObject($data);
+                    break;
+                case 404:
+                    $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
+                    $e->setResponseObject($data);
+                    break;
+                case 500:
+                    $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
+                    $e->setResponseObject($data);
+                    break;
+            }
+
+            throw $e;
+        }
+    }
+
+    /**
+     * Operation acceptLogoutRequest
+     *
+     * Accept a logout request
+     *
+     * Client for Hydra
+     *
+     * @param string $logout_challenge  (required)
+     * @throws \HydraSDK\ApiException on non-2xx response
+     * @return \HydraSDK\Model\CompletedRequest
+     */
+    public function acceptLogoutRequest($logout_challenge)
+    {
+        list($response) = $this->acceptLogoutRequestWithHttpInfo($logout_challenge);
+        return $response;
+    }
+
+    /**
+     * Operation acceptLogoutRequestWithHttpInfo
+     *
+     * Accept a logout request
+     *
+     * Client for Hydra
+     *
+     * @param string $logout_challenge  (required)
+     * @throws \HydraSDK\ApiException on non-2xx response
+     * @return array of \HydraSDK\Model\CompletedRequest, HTTP status code, HTTP response headers (array of strings)
+     */
+    public function acceptLogoutRequestWithHttpInfo($logout_challenge)
+    {
+        // verify the required parameter 'logout_challenge' is set
+        if ($logout_challenge === null) {
+            throw new \InvalidArgumentException('Missing the required parameter $logout_challenge when calling acceptLogoutRequest');
+        }
+        // parse inputs
+        $resourcePath = "/oauth2/auth/requests/logout/accept";
+        $httpBody = '';
+        $queryParams = [];
+        $headerParams = [];
+        $formParams = [];
+        $_header_accept = $this->apiClient->selectHeaderAccept(['application/json']);
+        if (!is_null($_header_accept)) {
+            $headerParams['Accept'] = $_header_accept;
+        }
+        $headerParams['Content-Type'] = $this->apiClient->selectHeaderContentType(['application/json', 'application/x-www-form-urlencoded']);
+
+        // query params
+        if ($logout_challenge !== null) {
+            $queryParams['logout_challenge'] = $this->apiClient->getSerializer()->toQueryValue($logout_challenge);
+        }
+
+        // for model (json/xml)
+        if (isset($_tempBody)) {
+            $httpBody = $_tempBody; // $_tempBody is the method argument, if present
+        } elseif (count($formParams) > 0) {
+            $httpBody = $formParams; // for HTTP post (form)
+        }
+        // make the API Call
+        try {
+            list($response, $statusCode, $httpHeader) = $this->apiClient->callApi(
+                $resourcePath,
+                'PUT',
+                $queryParams,
+                $httpBody,
+                $headerParams,
+                '\HydraSDK\Model\CompletedRequest',
+                '/oauth2/auth/requests/logout/accept'
+            );
+
+            return [$this->apiClient->getSerializer()->deserialize($response, '\HydraSDK\Model\CompletedRequest', $httpHeader), $statusCode, $httpHeader];
+        } catch (ApiException $e) {
+            switch ($e->getCode()) {
+                case 200:
+                    $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\CompletedRequest', $e->getResponseHeaders());
+                    $e->setResponseObject($data);
+                    break;
+                case 404:
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
                     $e->setResponseObject($data);
                     break;
@@ -372,7 +458,7 @@ class AdminApi
             return [$this->apiClient->getSerializer()->deserialize($response, '\HydraSDK\Model\JSONWebKeySet', $httpHeader), $statusCode, $httpHeader];
         } catch (ApiException $e) {
             switch ($e->getCode()) {
-                case 200:
+                case 201:
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\JSONWebKeySet', $e->getResponseHeaders());
                     $e->setResponseObject($data);
                     break;
@@ -467,15 +553,15 @@ class AdminApi
             return [$this->apiClient->getSerializer()->deserialize($response, '\HydraSDK\Model\OAuth2Client', $httpHeader), $statusCode, $httpHeader];
         } catch (ApiException $e) {
             switch ($e->getCode()) {
-                case 200:
+                case 201:
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\OAuth2Client', $e->getResponseHeaders());
                     $e->setResponseObject($data);
                     break;
-                case 401:
+                case 400:
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
                     $e->setResponseObject($data);
                     break;
-                case 403:
+                case 409:
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
                     $e->setResponseObject($data);
                     break;
@@ -767,11 +853,7 @@ class AdminApi
             return [null, $statusCode, $httpHeader];
         } catch (ApiException $e) {
             switch ($e->getCode()) {
-                case 401:
-                    $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
-                    $e->setResponseObject($data);
-                    break;
-                case 403:
+                case 404:
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
                     $e->setResponseObject($data);
                     break;
@@ -875,13 +957,13 @@ class AdminApi
      *
      * Client for Hydra
      *
-     * @param string $challenge  (required)
+     * @param string $consent_challenge  (required)
      * @throws \HydraSDK\ApiException on non-2xx response
      * @return \HydraSDK\Model\ConsentRequest
      */
-    public function getConsentRequest($challenge)
+    public function getConsentRequest($consent_challenge)
     {
-        list($response) = $this->getConsentRequestWithHttpInfo($challenge);
+        list($response) = $this->getConsentRequestWithHttpInfo($consent_challenge);
         return $response;
     }
 
@@ -892,18 +974,18 @@ class AdminApi
      *
      * Client for Hydra
      *
-     * @param string $challenge  (required)
+     * @param string $consent_challenge  (required)
      * @throws \HydraSDK\ApiException on non-2xx response
      * @return array of \HydraSDK\Model\ConsentRequest, HTTP status code, HTTP response headers (array of strings)
      */
-    public function getConsentRequestWithHttpInfo($challenge)
+    public function getConsentRequestWithHttpInfo($consent_challenge)
     {
-        // verify the required parameter 'challenge' is set
-        if ($challenge === null) {
-            throw new \InvalidArgumentException('Missing the required parameter $challenge when calling getConsentRequest');
+        // verify the required parameter 'consent_challenge' is set
+        if ($consent_challenge === null) {
+            throw new \InvalidArgumentException('Missing the required parameter $consent_challenge when calling getConsentRequest');
         }
         // parse inputs
-        $resourcePath = "/oauth2/auth/requests/consent/{challenge}";
+        $resourcePath = "/oauth2/auth/requests/consent";
         $httpBody = '';
         $queryParams = [];
         $headerParams = [];
@@ -914,13 +996,9 @@ class AdminApi
         }
         $headerParams['Content-Type'] = $this->apiClient->selectHeaderContentType(['application/json']);
 
-        // path params
-        if ($challenge !== null) {
-            $resourcePath = str_replace(
-                "{" . "challenge" . "}",
-                $this->apiClient->getSerializer()->toPathValue($challenge),
-                $resourcePath
-            );
+        // query params
+        if ($consent_challenge !== null) {
+            $queryParams['consent_challenge'] = $this->apiClient->getSerializer()->toQueryValue($consent_challenge);
         }
 
         // for model (json/xml)
@@ -938,7 +1016,7 @@ class AdminApi
                 $httpBody,
                 $headerParams,
                 '\HydraSDK\Model\ConsentRequest',
-                '/oauth2/auth/requests/consent/{challenge}'
+                '/oauth2/auth/requests/consent'
             );
 
             return [$this->apiClient->getSerializer()->deserialize($response, '\HydraSDK\Model\ConsentRequest', $httpHeader), $statusCode, $httpHeader];
@@ -948,7 +1026,7 @@ class AdminApi
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\ConsentRequest', $e->getResponseHeaders());
                     $e->setResponseObject($data);
                     break;
-                case 401:
+                case 404:
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
                     $e->setResponseObject($data);
                     break;
@@ -1179,13 +1257,13 @@ class AdminApi
      *
      * Client for Hydra
      *
-     * @param string $challenge  (required)
+     * @param string $login_challenge  (required)
      * @throws \HydraSDK\ApiException on non-2xx response
      * @return \HydraSDK\Model\LoginRequest
      */
-    public function getLoginRequest($challenge)
+    public function getLoginRequest($login_challenge)
     {
-        list($response) = $this->getLoginRequestWithHttpInfo($challenge);
+        list($response) = $this->getLoginRequestWithHttpInfo($login_challenge);
         return $response;
     }
 
@@ -1196,18 +1274,18 @@ class AdminApi
      *
      * Client for Hydra
      *
-     * @param string $challenge  (required)
+     * @param string $login_challenge  (required)
      * @throws \HydraSDK\ApiException on non-2xx response
      * @return array of \HydraSDK\Model\LoginRequest, HTTP status code, HTTP response headers (array of strings)
      */
-    public function getLoginRequestWithHttpInfo($challenge)
+    public function getLoginRequestWithHttpInfo($login_challenge)
     {
-        // verify the required parameter 'challenge' is set
-        if ($challenge === null) {
-            throw new \InvalidArgumentException('Missing the required parameter $challenge when calling getLoginRequest');
+        // verify the required parameter 'login_challenge' is set
+        if ($login_challenge === null) {
+            throw new \InvalidArgumentException('Missing the required parameter $login_challenge when calling getLoginRequest');
         }
         // parse inputs
-        $resourcePath = "/oauth2/auth/requests/login/{challenge}";
+        $resourcePath = "/oauth2/auth/requests/login";
         $httpBody = '';
         $queryParams = [];
         $headerParams = [];
@@ -1218,13 +1296,9 @@ class AdminApi
         }
         $headerParams['Content-Type'] = $this->apiClient->selectHeaderContentType(['application/json']);
 
-        // path params
-        if ($challenge !== null) {
-            $resourcePath = str_replace(
-                "{" . "challenge" . "}",
-                $this->apiClient->getSerializer()->toPathValue($challenge),
-                $resourcePath
-            );
+        // query params
+        if ($login_challenge !== null) {
+            $queryParams['login_challenge'] = $this->apiClient->getSerializer()->toQueryValue($login_challenge);
         }
 
         // for model (json/xml)
@@ -1242,7 +1316,7 @@ class AdminApi
                 $httpBody,
                 $headerParams,
                 '\HydraSDK\Model\LoginRequest',
-                '/oauth2/auth/requests/login/{challenge}'
+                '/oauth2/auth/requests/login'
             );
 
             return [$this->apiClient->getSerializer()->deserialize($response, '\HydraSDK\Model\LoginRequest', $httpHeader), $statusCode, $httpHeader];
@@ -1252,11 +1326,105 @@ class AdminApi
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\LoginRequest', $e->getResponseHeaders());
                     $e->setResponseObject($data);
                     break;
-                case 401:
+                case 400:
+                    $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
+                    $e->setResponseObject($data);
+                    break;
+                case 404:
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
                     $e->setResponseObject($data);
                     break;
                 case 409:
+                    $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
+                    $e->setResponseObject($data);
+                    break;
+                case 500:
+                    $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
+                    $e->setResponseObject($data);
+                    break;
+            }
+
+            throw $e;
+        }
+    }
+
+    /**
+     * Operation getLogoutRequest
+     *
+     * Get a logout request
+     *
+     * Client for Hydra
+     *
+     * @param string $logout_challenge  (required)
+     * @throws \HydraSDK\ApiException on non-2xx response
+     * @return \HydraSDK\Model\LogoutRequest
+     */
+    public function getLogoutRequest($logout_challenge)
+    {
+        list($response) = $this->getLogoutRequestWithHttpInfo($logout_challenge);
+        return $response;
+    }
+
+    /**
+     * Operation getLogoutRequestWithHttpInfo
+     *
+     * Get a logout request
+     *
+     * Client for Hydra
+     *
+     * @param string $logout_challenge  (required)
+     * @throws \HydraSDK\ApiException on non-2xx response
+     * @return array of \HydraSDK\Model\LogoutRequest, HTTP status code, HTTP response headers (array of strings)
+     */
+    public function getLogoutRequestWithHttpInfo($logout_challenge)
+    {
+        // verify the required parameter 'logout_challenge' is set
+        if ($logout_challenge === null) {
+            throw new \InvalidArgumentException('Missing the required parameter $logout_challenge when calling getLogoutRequest');
+        }
+        // parse inputs
+        $resourcePath = "/oauth2/auth/requests/logout";
+        $httpBody = '';
+        $queryParams = [];
+        $headerParams = [];
+        $formParams = [];
+        $_header_accept = $this->apiClient->selectHeaderAccept(['application/json']);
+        if (!is_null($_header_accept)) {
+            $headerParams['Accept'] = $_header_accept;
+        }
+        $headerParams['Content-Type'] = $this->apiClient->selectHeaderContentType(['application/json', 'application/x-www-form-urlencoded']);
+
+        // query params
+        if ($logout_challenge !== null) {
+            $queryParams['logout_challenge'] = $this->apiClient->getSerializer()->toQueryValue($logout_challenge);
+        }
+
+        // for model (json/xml)
+        if (isset($_tempBody)) {
+            $httpBody = $_tempBody; // $_tempBody is the method argument, if present
+        } elseif (count($formParams) > 0) {
+            $httpBody = $formParams; // for HTTP post (form)
+        }
+        // make the API Call
+        try {
+            list($response, $statusCode, $httpHeader) = $this->apiClient->callApi(
+                $resourcePath,
+                'GET',
+                $queryParams,
+                $httpBody,
+                $headerParams,
+                '\HydraSDK\Model\LogoutRequest',
+                '/oauth2/auth/requests/logout'
+            );
+
+            return [$this->apiClient->getSerializer()->deserialize($response, '\HydraSDK\Model\LogoutRequest', $httpHeader), $statusCode, $httpHeader];
+        } catch (ApiException $e) {
+            switch ($e->getCode()) {
+                case 200:
+                    $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\LogoutRequest', $e->getResponseHeaders());
+                    $e->setResponseObject($data);
+                    break;
+                case 404:
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
                     $e->setResponseObject($data);
                     break;
@@ -1350,11 +1518,7 @@ class AdminApi
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\OAuth2Client', $e->getResponseHeaders());
                     $e->setResponseObject($data);
                     break;
-                case 401:
-                    $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
-                    $e->setResponseObject($data);
-                    break;
-                case 403:
+                case 404:
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
                     $e->setResponseObject($data);
                     break;
@@ -1375,7 +1539,7 @@ class AdminApi
      *
      * Client for Hydra
      *
-     * @param string $token The string value of the token. For access tokens, this is the \&quot;access_token\&quot; value returned from the token endpoint defined in OAuth 2.0 [RFC6749], Section 5.1. This endpoint DOES NOT accept refresh tokens for validation. (required)
+     * @param string $token The string value of the token. For access tokens, this is the \&quot;access_token\&quot; value returned from the token endpoint defined in OAuth 2.0. For refresh tokens, this is the \&quot;refresh_token\&quot; value returned. (required)
      * @param string $scope An optional, space separated list of required scopes. If the access token was not granted one of the scopes, the result of active will be false. (optional)
      * @throws \HydraSDK\ApiException on non-2xx response
      * @return \HydraSDK\Model\OAuth2TokenIntrospection
@@ -1393,7 +1557,7 @@ class AdminApi
      *
      * Client for Hydra
      *
-     * @param string $token The string value of the token. For access tokens, this is the \&quot;access_token\&quot; value returned from the token endpoint defined in OAuth 2.0 [RFC6749], Section 5.1. This endpoint DOES NOT accept refresh tokens for validation. (required)
+     * @param string $token The string value of the token. For access tokens, this is the \&quot;access_token\&quot; value returned from the token endpoint defined in OAuth 2.0. For refresh tokens, this is the \&quot;refresh_token\&quot; value returned. (required)
      * @param string $scope An optional, space separated list of required scopes. If the access token was not granted one of the scopes, the result of active will be false. (optional)
      * @throws \HydraSDK\ApiException on non-2xx response
      * @return array of \HydraSDK\Model\OAuth2TokenIntrospection, HTTP status code, HTTP response headers (array of strings)
@@ -1550,14 +1714,6 @@ class AdminApi
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\OAuth2Client[]', $e->getResponseHeaders());
                     $e->setResponseObject($data);
                     break;
-                case 401:
-                    $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
-                    $e->setResponseObject($data);
-                    break;
-                case 403:
-                    $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
-                    $e->setResponseObject($data);
-                    break;
                 case 500:
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
                     $e->setResponseObject($data);
@@ -1569,41 +1725,41 @@ class AdminApi
     }
 
     /**
-     * Operation listUserConsentSessions
+     * Operation listSubjectConsentSessions
      *
-     * Lists all consent sessions of a user
+     * Lists all consent sessions of a subject
      *
      * Client for Hydra
      *
-     * @param string $user  (required)
+     * @param string $subject  (required)
      * @throws \HydraSDK\ApiException on non-2xx response
      * @return \HydraSDK\Model\PreviousConsentSession[]
      */
-    public function listUserConsentSessions($user)
+    public function listSubjectConsentSessions($subject)
     {
-        list($response) = $this->listUserConsentSessionsWithHttpInfo($user);
+        list($response) = $this->listSubjectConsentSessionsWithHttpInfo($subject);
         return $response;
     }
 
     /**
-     * Operation listUserConsentSessionsWithHttpInfo
+     * Operation listSubjectConsentSessionsWithHttpInfo
      *
-     * Lists all consent sessions of a user
+     * Lists all consent sessions of a subject
      *
      * Client for Hydra
      *
-     * @param string $user  (required)
+     * @param string $subject  (required)
      * @throws \HydraSDK\ApiException on non-2xx response
      * @return array of \HydraSDK\Model\PreviousConsentSession[], HTTP status code, HTTP response headers (array of strings)
      */
-    public function listUserConsentSessionsWithHttpInfo($user)
+    public function listSubjectConsentSessionsWithHttpInfo($subject)
     {
-        // verify the required parameter 'user' is set
-        if ($user === null) {
-            throw new \InvalidArgumentException('Missing the required parameter $user when calling listUserConsentSessions');
+        // verify the required parameter 'subject' is set
+        if ($subject === null) {
+            throw new \InvalidArgumentException('Missing the required parameter $subject when calling listSubjectConsentSessions');
         }
         // parse inputs
-        $resourcePath = "/oauth2/auth/sessions/consent/{user}";
+        $resourcePath = "/oauth2/auth/sessions/consent";
         $httpBody = '';
         $queryParams = [];
         $headerParams = [];
@@ -1614,13 +1770,9 @@ class AdminApi
         }
         $headerParams['Content-Type'] = $this->apiClient->selectHeaderContentType(['application/json']);
 
-        // path params
-        if ($user !== null) {
-            $resourcePath = str_replace(
-                "{" . "user" . "}",
-                $this->apiClient->getSerializer()->toPathValue($user),
-                $resourcePath
-            );
+        // query params
+        if ($subject !== null) {
+            $queryParams['subject'] = $this->apiClient->getSerializer()->toQueryValue($subject);
         }
 
         // for model (json/xml)
@@ -1638,7 +1790,7 @@ class AdminApi
                 $httpBody,
                 $headerParams,
                 '\HydraSDK\Model\PreviousConsentSession[]',
-                '/oauth2/auth/sessions/consent/{user}'
+                '/oauth2/auth/sessions/consent'
             );
 
             return [$this->apiClient->getSerializer()->deserialize($response, '\HydraSDK\Model\PreviousConsentSession[]', $httpHeader), $statusCode, $httpHeader];
@@ -1648,11 +1800,11 @@ class AdminApi
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\PreviousConsentSession[]', $e->getResponseHeaders());
                     $e->setResponseObject($data);
                     break;
-                case 401:
+                case 400:
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
                     $e->setResponseObject($data);
                     break;
-                case 403:
+                case 404:
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
                     $e->setResponseObject($data);
                     break;
@@ -1673,14 +1825,14 @@ class AdminApi
      *
      * Client for Hydra
      *
-     * @param string $challenge  (required)
+     * @param string $consent_challenge  (required)
      * @param \HydraSDK\Model\RejectRequest $body  (optional)
      * @throws \HydraSDK\ApiException on non-2xx response
      * @return \HydraSDK\Model\CompletedRequest
      */
-    public function rejectConsentRequest($challenge, $body = null)
+    public function rejectConsentRequest($consent_challenge, $body = null)
     {
-        list($response) = $this->rejectConsentRequestWithHttpInfo($challenge, $body);
+        list($response) = $this->rejectConsentRequestWithHttpInfo($consent_challenge, $body);
         return $response;
     }
 
@@ -1691,19 +1843,19 @@ class AdminApi
      *
      * Client for Hydra
      *
-     * @param string $challenge  (required)
+     * @param string $consent_challenge  (required)
      * @param \HydraSDK\Model\RejectRequest $body  (optional)
      * @throws \HydraSDK\ApiException on non-2xx response
      * @return array of \HydraSDK\Model\CompletedRequest, HTTP status code, HTTP response headers (array of strings)
      */
-    public function rejectConsentRequestWithHttpInfo($challenge, $body = null)
+    public function rejectConsentRequestWithHttpInfo($consent_challenge, $body = null)
     {
-        // verify the required parameter 'challenge' is set
-        if ($challenge === null) {
-            throw new \InvalidArgumentException('Missing the required parameter $challenge when calling rejectConsentRequest');
+        // verify the required parameter 'consent_challenge' is set
+        if ($consent_challenge === null) {
+            throw new \InvalidArgumentException('Missing the required parameter $consent_challenge when calling rejectConsentRequest');
         }
         // parse inputs
-        $resourcePath = "/oauth2/auth/requests/consent/{challenge}/reject";
+        $resourcePath = "/oauth2/auth/requests/consent/reject";
         $httpBody = '';
         $queryParams = [];
         $headerParams = [];
@@ -1714,13 +1866,9 @@ class AdminApi
         }
         $headerParams['Content-Type'] = $this->apiClient->selectHeaderContentType(['application/json']);
 
-        // path params
-        if ($challenge !== null) {
-            $resourcePath = str_replace(
-                "{" . "challenge" . "}",
-                $this->apiClient->getSerializer()->toPathValue($challenge),
-                $resourcePath
-            );
+        // query params
+        if ($consent_challenge !== null) {
+            $queryParams['consent_challenge'] = $this->apiClient->getSerializer()->toQueryValue($consent_challenge);
         }
         // body params
         $_tempBody = null;
@@ -1743,7 +1891,7 @@ class AdminApi
                 $httpBody,
                 $headerParams,
                 '\HydraSDK\Model\CompletedRequest',
-                '/oauth2/auth/requests/consent/{challenge}/reject'
+                '/oauth2/auth/requests/consent/reject'
             );
 
             return [$this->apiClient->getSerializer()->deserialize($response, '\HydraSDK\Model\CompletedRequest', $httpHeader), $statusCode, $httpHeader];
@@ -1753,7 +1901,7 @@ class AdminApi
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\CompletedRequest', $e->getResponseHeaders());
                     $e->setResponseObject($data);
                     break;
-                case 401:
+                case 404:
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
                     $e->setResponseObject($data);
                     break;
@@ -1774,14 +1922,14 @@ class AdminApi
      *
      * Client for Hydra
      *
-     * @param string $challenge  (required)
+     * @param string $login_challenge  (required)
      * @param \HydraSDK\Model\RejectRequest $body  (optional)
      * @throws \HydraSDK\ApiException on non-2xx response
      * @return \HydraSDK\Model\CompletedRequest
      */
-    public function rejectLoginRequest($challenge, $body = null)
+    public function rejectLoginRequest($login_challenge, $body = null)
     {
-        list($response) = $this->rejectLoginRequestWithHttpInfo($challenge, $body);
+        list($response) = $this->rejectLoginRequestWithHttpInfo($login_challenge, $body);
         return $response;
     }
 
@@ -1792,19 +1940,19 @@ class AdminApi
      *
      * Client for Hydra
      *
-     * @param string $challenge  (required)
+     * @param string $login_challenge  (required)
      * @param \HydraSDK\Model\RejectRequest $body  (optional)
      * @throws \HydraSDK\ApiException on non-2xx response
      * @return array of \HydraSDK\Model\CompletedRequest, HTTP status code, HTTP response headers (array of strings)
      */
-    public function rejectLoginRequestWithHttpInfo($challenge, $body = null)
+    public function rejectLoginRequestWithHttpInfo($login_challenge, $body = null)
     {
-        // verify the required parameter 'challenge' is set
-        if ($challenge === null) {
-            throw new \InvalidArgumentException('Missing the required parameter $challenge when calling rejectLoginRequest');
+        // verify the required parameter 'login_challenge' is set
+        if ($login_challenge === null) {
+            throw new \InvalidArgumentException('Missing the required parameter $login_challenge when calling rejectLoginRequest');
         }
         // parse inputs
-        $resourcePath = "/oauth2/auth/requests/login/{challenge}/reject";
+        $resourcePath = "/oauth2/auth/requests/login/reject";
         $httpBody = '';
         $queryParams = [];
         $headerParams = [];
@@ -1815,13 +1963,9 @@ class AdminApi
         }
         $headerParams['Content-Type'] = $this->apiClient->selectHeaderContentType(['application/json']);
 
-        // path params
-        if ($challenge !== null) {
-            $resourcePath = str_replace(
-                "{" . "challenge" . "}",
-                $this->apiClient->getSerializer()->toPathValue($challenge),
-                $resourcePath
-            );
+        // query params
+        if ($login_challenge !== null) {
+            $queryParams['login_challenge'] = $this->apiClient->getSerializer()->toQueryValue($login_challenge);
         }
         // body params
         $_tempBody = null;
@@ -1844,7 +1988,7 @@ class AdminApi
                 $httpBody,
                 $headerParams,
                 '\HydraSDK\Model\CompletedRequest',
-                '/oauth2/auth/requests/login/{challenge}/reject'
+                '/oauth2/auth/requests/login/reject'
             );
 
             return [$this->apiClient->getSerializer()->deserialize($response, '\HydraSDK\Model\CompletedRequest', $httpHeader), $statusCode, $httpHeader];
@@ -1855,6 +1999,10 @@ class AdminApi
                     $e->setResponseObject($data);
                     break;
                 case 401:
+                    $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
+                    $e->setResponseObject($data);
+                    break;
+                case 404:
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
                     $e->setResponseObject($data);
                     break;
@@ -1869,41 +2017,43 @@ class AdminApi
     }
 
     /**
-     * Operation revokeAllUserConsentSessions
+     * Operation rejectLogoutRequest
      *
-     * Revokes all previous consent sessions of a user
+     * Reject a logout request
      *
      * Client for Hydra
      *
-     * @param string $user  (required)
+     * @param string $logout_challenge  (required)
+     * @param \HydraSDK\Model\RejectRequest $body  (optional)
      * @throws \HydraSDK\ApiException on non-2xx response
      * @return void
      */
-    public function revokeAllUserConsentSessions($user)
+    public function rejectLogoutRequest($logout_challenge, $body = null)
     {
-        list($response) = $this->revokeAllUserConsentSessionsWithHttpInfo($user);
+        list($response) = $this->rejectLogoutRequestWithHttpInfo($logout_challenge, $body);
         return $response;
     }
 
     /**
-     * Operation revokeAllUserConsentSessionsWithHttpInfo
+     * Operation rejectLogoutRequestWithHttpInfo
      *
-     * Revokes all previous consent sessions of a user
+     * Reject a logout request
      *
      * Client for Hydra
      *
-     * @param string $user  (required)
+     * @param string $logout_challenge  (required)
+     * @param \HydraSDK\Model\RejectRequest $body  (optional)
      * @throws \HydraSDK\ApiException on non-2xx response
      * @return array of null, HTTP status code, HTTP response headers (array of strings)
      */
-    public function revokeAllUserConsentSessionsWithHttpInfo($user)
+    public function rejectLogoutRequestWithHttpInfo($logout_challenge, $body = null)
     {
-        // verify the required parameter 'user' is set
-        if ($user === null) {
-            throw new \InvalidArgumentException('Missing the required parameter $user when calling revokeAllUserConsentSessions');
+        // verify the required parameter 'logout_challenge' is set
+        if ($logout_challenge === null) {
+            throw new \InvalidArgumentException('Missing the required parameter $logout_challenge when calling rejectLogoutRequest');
         }
         // parse inputs
-        $resourcePath = "/oauth2/auth/sessions/consent/{user}";
+        $resourcePath = "/oauth2/auth/requests/logout/reject";
         $httpBody = '';
         $queryParams = [];
         $headerParams = [];
@@ -1912,15 +2062,16 @@ class AdminApi
         if (!is_null($_header_accept)) {
             $headerParams['Accept'] = $_header_accept;
         }
-        $headerParams['Content-Type'] = $this->apiClient->selectHeaderContentType(['application/json']);
+        $headerParams['Content-Type'] = $this->apiClient->selectHeaderContentType(['application/json', 'application/x-www-form-urlencoded']);
 
-        // path params
-        if ($user !== null) {
-            $resourcePath = str_replace(
-                "{" . "user" . "}",
-                $this->apiClient->getSerializer()->toPathValue($user),
-                $resourcePath
-            );
+        // query params
+        if ($logout_challenge !== null) {
+            $queryParams['logout_challenge'] = $this->apiClient->getSerializer()->toQueryValue($logout_challenge);
+        }
+        // body params
+        $_tempBody = null;
+        if (isset($body)) {
+            $_tempBody = $body;
         }
 
         // for model (json/xml)
@@ -1933,12 +2084,12 @@ class AdminApi
         try {
             list($response, $statusCode, $httpHeader) = $this->apiClient->callApi(
                 $resourcePath,
-                'DELETE',
+                'PUT',
                 $queryParams,
                 $httpBody,
                 $headerParams,
                 null,
-                '/oauth2/auth/sessions/consent/{user}'
+                '/oauth2/auth/requests/logout/reject'
             );
 
             return [null, $statusCode, $httpHeader];
@@ -1961,39 +2112,39 @@ class AdminApi
     /**
      * Operation revokeAuthenticationSession
      *
-     * Invalidates a user's authentication session
+     * Invalidates all login sessions of a certain user Invalidates a subject's authentication session
      *
      * Client for Hydra
      *
-     * @param string $user  (required)
+     * @param string $subject  (required)
      * @throws \HydraSDK\ApiException on non-2xx response
      * @return void
      */
-    public function revokeAuthenticationSession($user)
+    public function revokeAuthenticationSession($subject)
     {
-        list($response) = $this->revokeAuthenticationSessionWithHttpInfo($user);
+        list($response) = $this->revokeAuthenticationSessionWithHttpInfo($subject);
         return $response;
     }
 
     /**
      * Operation revokeAuthenticationSessionWithHttpInfo
      *
-     * Invalidates a user's authentication session
+     * Invalidates all login sessions of a certain user Invalidates a subject's authentication session
      *
      * Client for Hydra
      *
-     * @param string $user  (required)
+     * @param string $subject  (required)
      * @throws \HydraSDK\ApiException on non-2xx response
      * @return array of null, HTTP status code, HTTP response headers (array of strings)
      */
-    public function revokeAuthenticationSessionWithHttpInfo($user)
+    public function revokeAuthenticationSessionWithHttpInfo($subject)
     {
-        // verify the required parameter 'user' is set
-        if ($user === null) {
-            throw new \InvalidArgumentException('Missing the required parameter $user when calling revokeAuthenticationSession');
+        // verify the required parameter 'subject' is set
+        if ($subject === null) {
+            throw new \InvalidArgumentException('Missing the required parameter $subject when calling revokeAuthenticationSession');
         }
         // parse inputs
-        $resourcePath = "/oauth2/auth/sessions/login/{user}";
+        $resourcePath = "/oauth2/auth/sessions/login";
         $httpBody = '';
         $queryParams = [];
         $headerParams = [];
@@ -2004,13 +2155,9 @@ class AdminApi
         }
         $headerParams['Content-Type'] = $this->apiClient->selectHeaderContentType(['application/json']);
 
-        // path params
-        if ($user !== null) {
-            $resourcePath = str_replace(
-                "{" . "user" . "}",
-                $this->apiClient->getSerializer()->toPathValue($user),
-                $resourcePath
-            );
+        // query params
+        if ($subject !== null) {
+            $queryParams['subject'] = $this->apiClient->getSerializer()->toQueryValue($subject);
         }
 
         // for model (json/xml)
@@ -2028,12 +2175,16 @@ class AdminApi
                 $httpBody,
                 $headerParams,
                 null,
-                '/oauth2/auth/sessions/login/{user}'
+                '/oauth2/auth/sessions/login'
             );
 
             return [null, $statusCode, $httpHeader];
         } catch (ApiException $e) {
             switch ($e->getCode()) {
+                case 400:
+                    $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
+                    $e->setResponseObject($data);
+                    break;
                 case 404:
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
                     $e->setResponseObject($data);
@@ -2049,47 +2200,43 @@ class AdminApi
     }
 
     /**
-     * Operation revokeUserClientConsentSessions
+     * Operation revokeConsentSessions
      *
-     * Revokes consent sessions of a user for a specific OAuth 2.0 Client
+     * Revokes consent sessions of a subject for a specific OAuth 2.0 Client
      *
      * Client for Hydra
      *
-     * @param string $user  (required)
-     * @param string $client  (required)
+     * @param string $subject The subject (Subject) who&#39;s consent sessions should be deleted. (required)
+     * @param string $client If set, deletes only those consent sessions by the Subject that have been granted to the specified OAuth 2.0 Client ID (optional)
      * @throws \HydraSDK\ApiException on non-2xx response
      * @return void
      */
-    public function revokeUserClientConsentSessions($user, $client)
+    public function revokeConsentSessions($subject, $client = null)
     {
-        list($response) = $this->revokeUserClientConsentSessionsWithHttpInfo($user, $client);
+        list($response) = $this->revokeConsentSessionsWithHttpInfo($subject, $client);
         return $response;
     }
 
     /**
-     * Operation revokeUserClientConsentSessionsWithHttpInfo
+     * Operation revokeConsentSessionsWithHttpInfo
      *
-     * Revokes consent sessions of a user for a specific OAuth 2.0 Client
+     * Revokes consent sessions of a subject for a specific OAuth 2.0 Client
      *
      * Client for Hydra
      *
-     * @param string $user  (required)
-     * @param string $client  (required)
+     * @param string $subject The subject (Subject) who&#39;s consent sessions should be deleted. (required)
+     * @param string $client If set, deletes only those consent sessions by the Subject that have been granted to the specified OAuth 2.0 Client ID (optional)
      * @throws \HydraSDK\ApiException on non-2xx response
      * @return array of null, HTTP status code, HTTP response headers (array of strings)
      */
-    public function revokeUserClientConsentSessionsWithHttpInfo($user, $client)
+    public function revokeConsentSessionsWithHttpInfo($subject, $client = null)
     {
-        // verify the required parameter 'user' is set
-        if ($user === null) {
-            throw new \InvalidArgumentException('Missing the required parameter $user when calling revokeUserClientConsentSessions');
-        }
-        // verify the required parameter 'client' is set
-        if ($client === null) {
-            throw new \InvalidArgumentException('Missing the required parameter $client when calling revokeUserClientConsentSessions');
+        // verify the required parameter 'subject' is set
+        if ($subject === null) {
+            throw new \InvalidArgumentException('Missing the required parameter $subject when calling revokeConsentSessions');
         }
         // parse inputs
-        $resourcePath = "/oauth2/auth/sessions/consent/{user}/{client}";
+        $resourcePath = "/oauth2/auth/sessions/consent";
         $httpBody = '';
         $queryParams = [];
         $headerParams = [];
@@ -2100,21 +2247,13 @@ class AdminApi
         }
         $headerParams['Content-Type'] = $this->apiClient->selectHeaderContentType(['application/json']);
 
-        // path params
-        if ($user !== null) {
-            $resourcePath = str_replace(
-                "{" . "user" . "}",
-                $this->apiClient->getSerializer()->toPathValue($user),
-                $resourcePath
-            );
+        // query params
+        if ($subject !== null) {
+            $queryParams['subject'] = $this->apiClient->getSerializer()->toQueryValue($subject);
         }
-        // path params
+        // query params
         if ($client !== null) {
-            $resourcePath = str_replace(
-                "{" . "client" . "}",
-                $this->apiClient->getSerializer()->toPathValue($client),
-                $resourcePath
-            );
+            $queryParams['client'] = $this->apiClient->getSerializer()->toQueryValue($client);
         }
 
         // for model (json/xml)
@@ -2132,88 +2271,16 @@ class AdminApi
                 $httpBody,
                 $headerParams,
                 null,
-                '/oauth2/auth/sessions/consent/{user}/{client}'
+                '/oauth2/auth/sessions/consent'
             );
 
             return [null, $statusCode, $httpHeader];
         } catch (ApiException $e) {
             switch ($e->getCode()) {
-                case 404:
+                case 400:
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
                     $e->setResponseObject($data);
                     break;
-                case 500:
-                    $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
-                    $e->setResponseObject($data);
-                    break;
-            }
-
-            throw $e;
-        }
-    }
-
-    /**
-     * Operation revokeUserLoginCookie
-     *
-     * Logs user out by deleting the session cookie
-     *
-     * Client for Hydra
-     *
-     * @throws \HydraSDK\ApiException on non-2xx response
-     * @return void
-     */
-    public function revokeUserLoginCookie()
-    {
-        list($response) = $this->revokeUserLoginCookieWithHttpInfo();
-        return $response;
-    }
-
-    /**
-     * Operation revokeUserLoginCookieWithHttpInfo
-     *
-     * Logs user out by deleting the session cookie
-     *
-     * Client for Hydra
-     *
-     * @throws \HydraSDK\ApiException on non-2xx response
-     * @return array of null, HTTP status code, HTTP response headers (array of strings)
-     */
-    public function revokeUserLoginCookieWithHttpInfo()
-    {
-        // parse inputs
-        $resourcePath = "/oauth2/auth/sessions/login/revoke";
-        $httpBody = '';
-        $queryParams = [];
-        $headerParams = [];
-        $formParams = [];
-        $_header_accept = $this->apiClient->selectHeaderAccept(['application/json']);
-        if (!is_null($_header_accept)) {
-            $headerParams['Accept'] = $_header_accept;
-        }
-        $headerParams['Content-Type'] = $this->apiClient->selectHeaderContentType(['application/json', 'application/x-www-form-urlencoded']);
-
-
-        // for model (json/xml)
-        if (isset($_tempBody)) {
-            $httpBody = $_tempBody; // $_tempBody is the method argument, if present
-        } elseif (count($formParams) > 0) {
-            $httpBody = $formParams; // for HTTP post (form)
-        }
-        // make the API Call
-        try {
-            list($response, $statusCode, $httpHeader) = $this->apiClient->callApi(
-                $resourcePath,
-                'GET',
-                $queryParams,
-                $httpBody,
-                $headerParams,
-                null,
-                '/oauth2/auth/sessions/login/revoke'
-            );
-
-            return [null, $statusCode, $httpHeader];
-        } catch (ApiException $e) {
-            switch ($e->getCode()) {
                 case 404:
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
                     $e->setResponseObject($data);
@@ -2541,14 +2608,6 @@ class AdminApi
             switch ($e->getCode()) {
                 case 200:
                     $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\OAuth2Client', $e->getResponseHeaders());
-                    $e->setResponseObject($data);
-                    break;
-                case 401:
-                    $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
-                    $e->setResponseObject($data);
-                    break;
-                case 403:
-                    $data = $this->apiClient->getSerializer()->deserialize($e->getResponseBody(), '\HydraSDK\Model\GenericError', $e->getResponseHeaders());
                     $e->setResponseObject($data);
                     break;
                 case 500:

@@ -58,6 +58,7 @@
 
 
 
+
   };
 
   /**
@@ -79,6 +80,9 @@
       }
       if (data.hasOwnProperty('client')) {
         obj['client'] = OAuth2Client.constructFromObject(data['client']);
+      }
+      if (data.hasOwnProperty('context')) {
+        obj['context'] = ApiClient.convertToType(data['context'], {'String': Object});
       }
       if (data.hasOwnProperty('login_challenge')) {
         obj['login_challenge'] = ApiClient.convertToType(data['login_challenge'], 'String');
@@ -123,12 +127,17 @@
    */
   exports.prototype['client'] = undefined;
   /**
+   * Context contains arbitrary information set by the login endpoint or is empty if not set.
+   * @member {Object.<String, Object>} context
+   */
+  exports.prototype['context'] = undefined;
+  /**
    * LoginChallenge is the login challenge this consent challenge belongs to. It can be used to associate a login and consent request in the login & consent app.
    * @member {String} login_challenge
    */
   exports.prototype['login_challenge'] = undefined;
   /**
-   * LoginSessionID is the authentication session ID. It is set if the browser had a valid authentication session at ORY Hydra during the login flow. It can be used to associate consecutive login requests by a certain user.
+   * LoginSessionID is the login session ID. If the user-agent reuses a login session (via cookie / remember flag) this ID will remain the same. If the user-agent did not have an existing authentication session (e.g. remember is false) this will be a new random value. This value is used as the \"sid\" parameter in the ID Token and in OIDC Front-/Back- channel logout. It's value can generally be used to associate consecutive login requests by a certain user.
    * @member {String} login_session_id
    */
   exports.prototype['login_session_id'] = undefined;

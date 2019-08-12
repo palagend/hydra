@@ -43,9 +43,6 @@ able to securely manage JSON Web Keys.
 - [Quickstart](#quickstart)
   - [5 minutes tutorial: Run your very own OAuth2 environment](#5-minutes-tutorial-run-your-very-own-oauth2-environment)
   - [Installation](#installation)
-    - [Download binaries](#download-binaries)
-    - [Using Docker](#using-docker)
-    - [Building from source](#building-from-source)
 - [Ecosystem](#ecosystem)
   - [ORY Security Console: Administrative User Interface](#ory-security-console-administrative-user-interface)
   - [ORY Oathkeeper: Identity & Access Proxy](#ory-oathkeeper-identity--access-proxy)
@@ -101,10 +98,12 @@ and the OpenID Foundation:
 * [OpenID Connect Core 1.0](http://openid.net/specs/openid-connect-core-1_0.html)
 * [OpenID Connect Discovery 1.0](https://openid.net/specs/openid-connect-discovery-1_0.html)
 * [OpenID Connect Dynamic Client Registration 1.0](https://openid.net/specs/openid-connect-registration-1_0.html)
+* [OpenID Connect Front-Channel Logout 1.0](https://openid.net/specs/openid-connect-frontchannel-1_0.html)
+* [OpenID Connect Back-Channel Logout 1.0](https://openid.net/specs/openid-connect-backchannel-1_0.html)
 
 ### OpenID Connect Certified
 
-ORY Hydra is an OpenID Foundation [certified OpenID Provider](http://openid.net/certification/#OPs).
+ORY Hydra is an OpenID Foundation [certified OpenID Provider (OP)](http://openid.net/certification/#OPs).
 
 <p align="center">
     <img src="./docs/images/oidc-cert.png" alt="ORY Hydra is a certified OpenID Providier" width="256px">
@@ -140,62 +139,7 @@ It will take you about 5 minutes to complete the **[tutorial](https://www.ory.sh
 
 ### Installation
 
-There are various ways of installing ORY Hydra on your system.
-
-#### Download binaries
-
-The client and server **binaries are downloadable at [releases](https://github.com/ory/hydra/releases)**.
-There is currently no installer available. You have to add the ORY Hydra binary to the PATH environment variable yourself or put
-the binary in a location that is already in your path (`/usr/bin`, ...).
-If you do not understand what that all of this means, ask in our [chat channel](https://www.ory.sh/chat). We are happy to help.
-
-#### Using Docker
-
-**Starting the host** is easiest with docker. The host process handles HTTP requests and is backed by a database.
-Read how to install docker on [Linux](https://docs.docker.com/install/linux/docker-ce/ubuntu/), [OSX](https://docs.docker.com/mac/) or
-[Windows](https://docs.docker.com/windows/). ORY Hydra is available on [Docker Hub](https://hub.docker.com/r/oryd/hydra/).
-
-You can use ORY Hydra without a database, but be aware that restarting, scaling
-or stopping the container will **lose all data**:
-
-```
-$ docker run -e "DATABASE_URL=memory" -e "ISSUER=https://localhost:4444/" -d --name my-hydra -p 4444:4444 oryd/hydra
-ec91228cb105db315553499c81918258f52cee9636ea2a4821bdb8226872f54b
-```
-
-*Note: We had to create a new docker hub repository. Tags prior to 0.7.5 are available [here](https://hub.docker.com/r/ory-am/hydra/).*
-
-**Using the client command line interface:** You can enter into the ORY Hydra container
-and execute the ORY Hydra command from there:
-
-```
-$ docker exec -i -t <hydra-container-id> /bin/sh
-# e.g. docker exec -i -t ec91228 /bin/sh
-
-root@ec91228cb105:/go/src/github.com/ory/hydra# hydra
-Hydra is a twelve factor OAuth2 and OpenID Connect provider
-
-[...]
-```
-
-#### Building from source
-
-If you wish to compile ORY Hydra yourself, you need to install and set up [Go 1.11+](https://golang.org/).
-
-The following commands will check out the latest release tag of ORY Hydra and compile it and set up flags so that `hydra version`
-works as expected. Please note that this will only work with a linux shell like bash or sh.
-
-```
-go get -d -u github.com/ory/hydra
-cd $(go env GOPATH)/src/github.com/ory/hydra
-HYDRA_LATEST=$(git describe --abbrev=0 --tags)
-git checkout $HYDRA_LATEST
-GO111MODULE=on go install \
-    -ldflags "-X github.com/ory/hydra/cmd.Version=$HYDRA_LATEST -X github.com/ory/hydra/cmd.BuildTime=`TZ=UTC date -u '+%Y-%m-%dT%H:%M:%SZ'` -X github.com/ory/hydra/cmd.GitHash=`git rev-parse HEAD`" \
-    github.com/ory/hydra
-git checkout master
-$GOPATH/bin/hydra help
-```
+Head over to the [ORY Developer Documentation](https://www.ory.sh/docs/next/hydra/configure-deploy#installing-ory-hydra) to learn how to install ORY Hydra on Linux, macOS, Windows, and Docker and how to build ORY Hydra from source.
 
 ## Ecosystem
 
@@ -240,7 +184,7 @@ and send us an email to [hi@ory.am](mailto:hi@ory.sh) instead.
 
 ## Benchmarks
 
-Our continuous integration runs a collection of benchmarks against ORY Hydra. You can find the results [here](https://www.ory.sh/docs/next/performance/performance-hydra).
+Our continuous integration runs a collection of benchmarks against ORY Hydra. You can find the results [here](https://www.ory.sh/docs/next/performance/hydra).
 
 ## Telemetry
 
@@ -284,7 +228,7 @@ make test-short
 Then run it with in-memory database:
 
 ```
-DATABASE_URL=memory go run main.go host
+DSN=memory go run main.go serve all
 ```
 
 **Notes**
@@ -301,6 +245,7 @@ Community:
 * [Consent App SDK for Go](https://github.com/janekolszak/idp)
 * [ORY Hydra middleware for Gin](https://github.com/janekolszak/gin-hydra)
 * [Kubernetes helm chart](https://github.com/kubernetes/charts/pull/1022)
+* [Werther - an Identity Provider over LDAP](https://github.com/i-core/werther)
 
 ## Blog posts & articles
 
@@ -311,15 +256,15 @@ article: [Hydra: Run your own Identity and Access Management service in <5 Minut
 ## Contributors
 
 This project exists thanks to all the people who contribute. [[Contribute](CONTRIBUTING.md)].
-<a href="graphs/contributors"><img src="https://opencollective.com/ory/contributors.svg?width=890&button=false" /></a>
+<a href="https://github.com/ory/hydra/graphs/contributors"><img src="https://opencollective.com/ory/contributors.svg?width=890&button=false" /></a>
 
 ## Backers
 
 Thank you to all our backers! 🙏 [[Become a backer](https://opencollective.com/ory#backer)]
 
 <a href="https://opencollective.com/ory#backers" target="_blank"><img src="https://opencollective.com/ory/backers.svg?width=890"></a>
+We would also like to thank (past & current) supporters (in alphabetical order) on [Patreon](https://www.patreon.com/_ory): Alexander Alimovs, Billy, Chancy Kennedy, Drozzy, Edwin Trejos, Howard Edidin, Ken Adler Oz Haven, Stefan Hans, TheCrealm
 
-We would also like to thank (past & current) supporters (in alphabetical order) on [Patreon](https://www.patreon.com/_ory): Alexander Alimovs, Chancy Kennedy, Drozzy, Oz Haven, TheCrealm
 
 ## Sponsors
 

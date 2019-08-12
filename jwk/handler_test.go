@@ -27,36 +27,32 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/julienschmidt/httprouter"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	jose "gopkg.in/square/go-jose.v2"
 
-	"github.com/ory/herodot"
-	. "github.com/ory/hydra/jwk"
+	"github.com/ory/hydra/driver/configuration"
+	"github.com/ory/hydra/internal"
+	"github.com/ory/hydra/x"
 )
 
-var testServer *httptest.Server
-var IDKS *jose.JSONWebKeySet
+func TestHandlerWellKnown(t *testing.T) {
+	conf := internal.NewConfigurationWithDefaults()
+	reg := internal.NewRegistry(conf)
 
-func init() {
-	router := httprouter.New()
-	IDKS, _ = testGenerator.Generate("test-id", "sig")
+	viper.Set(configuration.ViperKeyWellKnownKeys, []string{x.OpenIDConnectKeyName, x.OpenIDConnectKeyName})
 
-	h := NewHandler(
-		&MemoryManager{},
-		nil,
-		herodot.NewJSONWriter(nil),
-		[]string{},
-	)
-	h.Manager.AddKeySet(context.TODO(), IDTokenKeyName, IDKS)
-	h.SetRoutes(router, router, func(h http.Handler) http.Handler {
+	router := x.NewRouterPublic()
+	IDKS, _ := testGenerator.Generate("test-id", "sig")
+
+	h := reg.KeyHandler()
+	require.NoError(t, reg.KeyManager().AddKeySet(context.TODO(), x.OpenIDConnectKeyName, IDKS))
+
+	h.SetRoutes(router.RouterAdmin(), router, func(h http.Handler) http.Handler {
 		return h
 	})
-	testServer = httptest.NewServer(router)
-}
-
-func TestHandlerWellKnown(t *testing.T) {
+	testServer := httptest.NewServer(router)
 
 	JWKPath := "/.well-known/jwks.json"
 	res, err := http.Get(testServer.URL + JWKPath)
@@ -66,6 +62,8 @@ func TestHandlerWellKnown(t *testing.T) {
 	var known jose.JSONWebKeySet
 	err = json.NewDecoder(res.Body).Decode(&known)
 	require.NoError(t, err, "problem in decoding response")
+
+	require.Len(t, known.Keys, 1)
 
 	resp := known.Key("public:test-id")
 	require.NotNil(t, resp, "Could not find key public")

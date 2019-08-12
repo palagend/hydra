@@ -36,6 +36,9 @@ as well.
 
 Example:
   hydra clients create -n "my app" -c http://localhost/cb -g authorization_code -r code -a core,foobar
+
+To encrypt auto generated client secret, use "--pgp-key", "--pgp-key-url" or "--keybase" flag, for example:
+  hydra clients create -n "my app" -g client_credentials -r token -a core,foobar --keybase keybase_username
 `,
 	Run: cmdHandler.Clients.CreateClient,
 }
@@ -54,7 +57,14 @@ func init() {
 	clientsCreateCmd.Flags().String("tos-uri", "", "A URL string that points to a human-readable terms of service document for the client that describes a contractual relationship between the end-user and the client that the end-user accepts when authorizing the client")
 	clientsCreateCmd.Flags().String("client-uri", "", "A URL string of a web page providing information about the client")
 	clientsCreateCmd.Flags().String("logo-uri", "", "A URL string that references a logo for the client")
-	clientsCreateCmd.Flags().String("subject-type", "public", "A URL string that references a logo for the client")
+	clientsCreateCmd.Flags().StringSlice("allowed-cors-origins", []string{}, "The list of URLs allowed to make CORS requests. Requires CORS_ENABLED.")
+	clientsCreateCmd.Flags().String("subject-type", "public", "A identifier algorithm. Valid values are \"public\" and \"pairwise\"")
 	clientsCreateCmd.Flags().String("secret", "", "Provide the client's secret")
 	clientsCreateCmd.Flags().StringP("name", "n", "", "The client's name")
+	clientsCreateCmd.Flags().StringSlice("post-logout-callbacks", []string{}, "List of allowed URLs to be redirected to after a logout")
+
+	// encrypt client secret options
+	clientsCreateCmd.Flags().String("pgp-key", "", "Base64 encoded PGP encryption key for encrypting client secret")
+	clientsCreateCmd.Flags().String("pgp-key-url", "", "PGP encryption key URL for encrypting client secret")
+	clientsCreateCmd.Flags().String("keybase", "", "Keybase username for encrypting client secret")
 }
